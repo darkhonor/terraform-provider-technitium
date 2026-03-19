@@ -177,3 +177,71 @@ func TestRunRules_EmptyForValidInput(t *testing.T) {
 		t.Fatalf("expected 0 findings, got %d", len(findings))
 	}
 }
+
+func TestDefaultRegistry_HasAllRecordRules(t *testing.T) {
+	r := DefaultRegistry()
+	rules := r.RulesFor(ResourceRecord)
+
+	expectedNames := map[string]bool{
+		"record_type":         false,
+		"a_record_ipv4":       false,
+		"aaaa_record_ipv6":    false,
+		"cname_record_fqdn":   false,
+		"mx_record":           false,
+		"ns_record_fqdn":      false,
+		"ptr_record_hostname": false,
+		"srv_record":          false,
+		"txt_record_nonempty": false,
+		"caa_record":          false,
+	}
+
+	for _, rule := range rules {
+		if _, exists := expectedNames[rule.Name]; !exists {
+			t.Errorf("unexpected rule: %s", rule.Name)
+		}
+		expectedNames[rule.Name] = true
+	}
+
+	for name, found := range expectedNames {
+		if !found {
+			t.Errorf("missing expected rule: %s", name)
+		}
+	}
+}
+
+func TestDefaultRegistry_EndToEnd_ValidA(t *testing.T) {
+	r := DefaultRegistry()
+	m := NewMockAccessor(map[string]interface{}{
+		"type":  "A",
+		"value": "192.0.2.1",
+	})
+	findings := r.RunRules(context.Background(), ResourceRecord, m)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings for valid A record, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestDefaultRegistry_EndToEnd_InvalidA(t *testing.T) {
+	r := DefaultRegistry()
+	m := NewMockAccessor(map[string]interface{}{
+		"type":  "A",
+		"value": "2001:db8::1",
+	})
+	findings := r.RunRules(context.Background(), ResourceRecord, m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for IPv6 in A record, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestDefaultRegistry_EndToEnd_InvalidType(t *testing.T) {
+	r := DefaultRegistry()
+	m := NewMockAccessor(map[string]interface{}{
+		"type":  "INVALID",
+		"value": "whatever",
+	})
+	findings := r.RunRules(context.Background(), ResourceRecord, m)
+	// Only the type validator should fire; type-specific validators skip unknown types
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for invalid type, got %d: %v", len(findings), findings)
+	}
+}
