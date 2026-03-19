@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/darkhonor/terraform-provider-technitium/internal/provider/inputvalidation"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -28,12 +29,15 @@ var (
 )
 
 func NewRecordResource() resource.Resource {
-	return &RecordResource{}
+	return &RecordResource{
+		inputRegistry: inputvalidation.DefaultRegistry(),
+	}
 }
 
 type RecordResource struct {
-	client       *client.Client
-	providerData *TechnitiumProviderData
+	client        *client.Client
+	providerData  *TechnitiumProviderData
+	inputRegistry *inputvalidation.Registry
 }
 
 type RecordResourceModel struct {
@@ -163,12 +167,13 @@ func (r *RecordResource) ModifyPlan(ctx context.Context, req resource.ModifyPlan
 }
 
 func (r *RecordResource) ConfigValidators(ctx context.Context) []resource.ConfigValidator {
-	if r.providerData == nil || r.providerData.STIGEngine == nil {
-		return nil
+	cvs := []resource.ConfigValidator{
+		newInputConfigValidator(r.inputRegistry, inputvalidation.ResourceRecord),
 	}
-	return []resource.ConfigValidator{
-		newSTIGConfigValidator(r.providerData.STIGEngine, validators.ResourceRecord),
+	if r.providerData != nil && r.providerData.STIGEngine != nil {
+		cvs = append(cvs, newSTIGConfigValidator(r.providerData.STIGEngine, validators.ResourceRecord))
 	}
+	return cvs
 }
 
 func (r *RecordResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
