@@ -156,3 +156,115 @@ func TestValidateTXTRecord_Empty(t *testing.T) {
 		t.Errorf("expected 1 finding for empty TXT, got %d", len(findings))
 	}
 }
+
+// --- CNAME record ---
+
+func TestValidateCNAMERecord_Valid(t *testing.T) {
+	tests := []string{"example.com", "example.com.", "sub.example.com"}
+	for _, v := range tests {
+		t.Run(v, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "CNAME", "value": v})
+			rule := validateCNAMERecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 0 {
+				t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestValidateCNAMERecord_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"ipv4", "192.0.2.1"},
+		{"ipv6", "2001:db8::1"},
+		{"empty", ""},
+		{"single_label", "localhost"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "CNAME", "value": tt.value})
+			rule := validateCNAMERecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 1 {
+				t.Errorf("expected 1 finding, got %d", len(findings))
+			}
+		})
+	}
+}
+
+// --- NS record ---
+
+func TestValidateNSRecord_Valid(t *testing.T) {
+	tests := []string{"ns1.example.com", "ns1.example.com."}
+	for _, v := range tests {
+		t.Run(v, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "NS", "value": v})
+			rule := validateNSRecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 0 {
+				t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestValidateNSRecord_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"ipv4", "192.0.2.1"},
+		{"ipv6", "2001:db8::1"},
+		{"empty", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "NS", "value": tt.value})
+			rule := validateNSRecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 1 {
+				t.Errorf("expected 1 finding, got %d", len(findings))
+			}
+		})
+	}
+}
+
+// --- PTR record ---
+
+func TestValidatePTRRecord_Valid(t *testing.T) {
+	tests := []string{"rancher", "rancher.asan.darkhonor.net", "rancher.asan.darkhonor.net.", "154"}
+	for _, v := range tests {
+		t.Run(v, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "PTR", "value": v})
+			rule := validatePTRRecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 0 {
+				t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestValidatePTRRecord_Invalid(t *testing.T) {
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{"ipv4", "192.0.2.1"},
+		{"ipv6", "2001:db8::1"},
+		{"empty", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMockAccessor(map[string]interface{}{"type": "PTR", "value": tt.value})
+			rule := validatePTRRecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 1 {
+				t.Errorf("expected 1 finding, got %d", len(findings))
+			}
+		})
+	}
+}

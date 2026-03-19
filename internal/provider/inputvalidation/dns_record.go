@@ -152,12 +152,33 @@ func validateTXTRecord() ValidationRule {
 }
 
 // ---------------------------------------------------------------------------
-// Stubs — implemented in Tasks 5 and 6
+// CNAME record
 // ---------------------------------------------------------------------------
 
 func validateCNAMERecord() ValidationRule {
-	return ValidationRule{Name: "cname_record_fqdn", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "cname_record_fqdn",
+		Description: "CNAME record value must be a valid FQDN",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "CNAME" {
+				return nil
+			}
+			value, ok := config.GetString("value")
+			if !ok {
+				return nil
+			}
+			if !isValidFQDN(value) {
+				return []Finding{{
+					Attribute: "value",
+					Summary:   fmt.Sprintf("Invalid CNAME record value: %q is not a valid FQDN", value),
+					Detail:    `CNAME records require a valid fully qualified domain name (e.g., "target.example.com.").`,
+				}}
+			}
+			return nil
+		},
+	}
 }
 
 func validateMXRecord() ValidationRule {
@@ -165,14 +186,64 @@ func validateMXRecord() ValidationRule {
 		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
 }
 
+// ---------------------------------------------------------------------------
+// NS record
+// ---------------------------------------------------------------------------
+
 func validateNSRecord() ValidationRule {
-	return ValidationRule{Name: "ns_record_fqdn", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "ns_record_fqdn",
+		Description: "NS record value must be a valid FQDN",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "NS" {
+				return nil
+			}
+			value, ok := config.GetString("value")
+			if !ok {
+				return nil
+			}
+			if !isValidFQDN(value) {
+				return []Finding{{
+					Attribute: "value",
+					Summary:   fmt.Sprintf("Invalid NS record value: %q is not a valid FQDN", value),
+					Detail:    `NS records require a valid fully qualified domain name (e.g., "ns1.example.com.").`,
+				}}
+			}
+			return nil
+		},
+	}
 }
 
+// ---------------------------------------------------------------------------
+// PTR record
+// ---------------------------------------------------------------------------
+
 func validatePTRRecord() ValidationRule {
-	return ValidationRule{Name: "ptr_record_hostname", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "ptr_record_hostname",
+		Description: "PTR record value must be a valid hostname (single-label or FQDN)",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "PTR" {
+				return nil
+			}
+			value, ok := config.GetString("value")
+			if !ok {
+				return nil
+			}
+			if !isValidHostname(value) {
+				return []Finding{{
+					Attribute: "value",
+					Summary:   fmt.Sprintf("Invalid PTR record value: %q is not a valid hostname", value),
+					Detail:    `PTR records require a valid hostname — either a single label (e.g., "rancher") or FQDN (e.g., "rancher.example.com.").`,
+				}}
+			}
+			return nil
+		},
+	}
 }
 
 func validateSRVRecord() ValidationRule {
