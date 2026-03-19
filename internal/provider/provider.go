@@ -240,40 +240,8 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		nssEnabled = config.STIGCompliance.NSS.ValueBool()
 	}
 
-	// Create API client
-	apiClient, err := client.NewClient(client.ClientConfig{
-		BaseURL:       serverURL,
-		Token:         apiToken,
-		SkipTLSVerify: skipTLSVerify,
-		CACertFile:    caCertFile,
-		CACertDir:     caCertDir,
-		TLSServerName: tlsServerName,
-		TLSMinVersion: tlsMinVersion,
-	})
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to create API client", err.Error())
-		return
-	}
-
-	// Verify connectivity with tiered TLS error diagnostics
-	if err := apiClient.Ping(); err != nil {
-		isHTTPS := strings.HasPrefix(serverURL, "https://")
-		if isHTTPS {
-			tlsErr := client.ClassifyTLSError(err)
-			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
-				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
-				return
-			}
-		}
-		resp.Diagnostics.AddError("Unable to connect to Technitium server",
-			fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error()))
-		return
-	}
-
-	// Parse STIG compliance
-	providerData := &TechnitiumProviderData{
-		Client: apiClient,
-	}
+	// Parse STIG compliance (before Ping so ValidateProvider fires first)
+	providerData := &TechnitiumProviderData{}
 
 	if config.STIGCompliance != nil {
 		providerData.STIGEnabled = stigEnabled
@@ -325,14 +293,10 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			}
 		}
 
-		// STIG warning for skip_tls_verify
-		if providerData.STIGEnabled && skipTLSVerify {
-			resp.Diagnostics.AddWarning("STIG SC-8: TLS verification disabled",
-				"skip_tls_verify = true disables TLS certificate verification. "+
-					"This violates STIG requirement SC-8 (Transmission Confidentiality and Integrity).")
-		}
-
-		// Construct engine when STIG enabled
+		// Construct engine when STIG enabled and run ValidateProvider before Ping.
+		// STIG validators catch HTTP URLs, skip_tls_verify=true, tls_min_version=1.2
+		// before any network call; Ping then fires with tiered TLS diagnostics if
+		// provider-level validation passes.
 		if providerData.STIGEnabled {
 			engine := validators.NewEngine(validators.EngineConfig{
 				Enabled:     true,
@@ -349,9 +313,52 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			engine.RegisterBindings(validators.ResourceServerSettings, validators.ServerSettingsBindings)
 			engine.RegisterBindings(validators.ResourceRecord, validators.RecordBindings)
 			engine.RegisterBindings(validators.ResourceTSIGKey, validators.TSIGKeyBindings)
+			engine.RegisterBindings(validators.TargetProvider, validators.ProviderBindings)
 			providerData.STIGEngine = engine
+
+			providerAccessor := &providerConfigAccessor{
+				serverURL:     serverURL,
+				skipTLSVerify: skipTLSVerify,
+				tlsMinVersion: tlsMinVersion,
+			}
+			engine.ValidateProvider(ctx, providerAccessor, &resp.Diagnostics)
+			if resp.Diagnostics.HasError() {
+				return
+			}
 		}
 	}
+
+	// Create API client
+	apiClient, err := client.NewClient(client.ClientConfig{
+		BaseURL:       serverURL,
+		Token:         apiToken,
+		SkipTLSVerify: skipTLSVerify,
+		CACertFile:    caCertFile,
+		CACertDir:     caCertDir,
+		TLSServerName: tlsServerName,
+		TLSMinVersion: tlsMinVersion,
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to create API client", err.Error())
+		return
+	}
+
+	// Verify connectivity with tiered TLS error diagnostics
+	if err := apiClient.Ping(); err != nil {
+		isHTTPS := strings.HasPrefix(serverURL, "https://")
+		if isHTTPS {
+			tlsErr := client.ClassifyTLSError(err)
+			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
+				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+				return
+			}
+		}
+		resp.Diagnostics.AddError("Unable to connect to Technitium server",
+			fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error()))
+		return
+	}
+
+	providerData.Client = apiClient
 
 	resp.DataSourceData = providerData
 	resp.ResourceData = providerData
@@ -579,3 +586,42 @@ func validateSuppressIDs(ids []string) diag.Diagnostics {
 	}
 	return diags
 }
+
+// providerConfigAccessor adapts provider configuration for STIG validator access.
+type providerConfigAccessor struct {
+	serverURL     string
+	skipTLSVerify bool
+	tlsMinVersion string
+}
+
+func (a *providerConfigAccessor) GetString(path string) (string, bool) {
+	switch path {
+	case "server_url":
+		return a.serverURL, true
+	case "tls_min_version":
+		if a.tlsMinVersion == "" {
+			return "", false
+		}
+		return a.tlsMinVersion, true
+	default:
+		return "", false
+	}
+}
+
+func (a *providerConfigAccessor) GetBool(path string) (bool, bool) {
+	switch path {
+	case "skip_tls_verify":
+		// Always returns ok=true because the resolved value always exists
+		// after resolveTLSBool (explicit default). Default (false) is compliant.
+		return a.skipTLSVerify, true
+	default:
+		return false, false
+	}
+}
+
+func (a *providerConfigAccessor) GetStringList(path string) ([]string, bool) {
+	return nil, false
+}
+
+// Interface compliance assertion.
+var _ validators.ConfigAccessor = &providerConfigAccessor{}
