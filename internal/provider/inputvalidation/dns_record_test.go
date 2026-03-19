@@ -268,3 +268,190 @@ func TestValidatePTRRecord_Invalid(t *testing.T) {
 		})
 	}
 }
+
+// --- MX record ---
+
+func TestValidateMXRecord_Valid(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "MX", "value": "mail.example.com.", "priority": int64(10),
+	})
+	rule := validateMXRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestValidateMXRecord_InvalidValue(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "MX", "value": "192.0.2.1", "priority": int64(10),
+	})
+	rule := validateMXRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestValidateMXRecord_MissingPriority(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "MX", "value": "mail.example.com.",
+	})
+	rule := validateMXRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for missing priority, got %d", len(findings))
+	}
+}
+
+func TestValidateMXRecord_PriorityOutOfRange(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "MX", "value": "mail.example.com.", "priority": int64(70000),
+	})
+	rule := validateMXRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for out-of-range priority, got %d", len(findings))
+	}
+}
+
+// --- SRV record ---
+
+func TestValidateSRVRecord_Valid(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "SRV", "value": "target.example.com.",
+		"priority": int64(10), "weight": int64(60), "port": int64(5060),
+	})
+	rule := validateSRVRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestValidateSRVRecord_InvalidTarget(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "SRV", "value": "192.0.2.1",
+		"priority": int64(10), "weight": int64(60), "port": int64(5060),
+	})
+	rule := validateSRVRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestValidateSRVRecord_MissingFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs map[string]interface{}
+	}{
+		{"missing_priority", map[string]interface{}{"type": "SRV", "value": "t.example.com.", "weight": int64(60), "port": int64(5060)}},
+		{"missing_weight", map[string]interface{}{"type": "SRV", "value": "t.example.com.", "priority": int64(10), "port": int64(5060)}},
+		{"missing_port", map[string]interface{}{"type": "SRV", "value": "t.example.com.", "priority": int64(10), "weight": int64(60)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMockAccessor(tt.attrs)
+			rule := validateSRVRecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 1 {
+				t.Errorf("expected 1 finding, got %d: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestValidateSRVRecord_PortOutOfRange(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "SRV", "value": "target.example.com.",
+		"priority": int64(10), "weight": int64(60), "port": int64(70000),
+	})
+	rule := validateSRVRecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for out-of-range port, got %d", len(findings))
+	}
+}
+
+// --- CAA record ---
+
+func TestValidateCAARecord_Valid(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "CAA", "value": "letsencrypt.org",
+		"caa_flags": int64(0), "caa_tag": "issue",
+	})
+	rule := validateCAARecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestValidateCAARecord_Flags128(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "CAA", "value": "letsencrypt.org",
+		"caa_flags": int64(128), "caa_tag": "issuewild",
+	})
+	rule := validateCAARecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 0 {
+		t.Errorf("expected 0 findings, got %d: %v", len(findings), findings)
+	}
+}
+
+func TestValidateCAARecord_InvalidFlags(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "CAA", "value": "letsencrypt.org",
+		"caa_flags": int64(1), "caa_tag": "issue",
+	})
+	rule := validateCAARecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestValidateCAARecord_InvalidTag(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "CAA", "value": "letsencrypt.org",
+		"caa_flags": int64(0), "caa_tag": "invalid",
+	})
+	rule := validateCAARecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding, got %d", len(findings))
+	}
+}
+
+func TestValidateCAARecord_MissingFields(t *testing.T) {
+	tests := []struct {
+		name  string
+		attrs map[string]interface{}
+	}{
+		{"missing_flags", map[string]interface{}{"type": "CAA", "value": "ca.example.com", "caa_tag": "issue"}},
+		{"missing_tag", map[string]interface{}{"type": "CAA", "value": "ca.example.com", "caa_flags": int64(0)}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := NewMockAccessor(tt.attrs)
+			rule := validateCAARecord()
+			findings := rule.Validate(context.Background(), m)
+			if len(findings) != 1 {
+				t.Errorf("expected 1 finding, got %d: %v", len(findings), findings)
+			}
+		})
+	}
+}
+
+func TestValidateCAARecord_EmptyValue(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type": "CAA", "value": "",
+		"caa_flags": int64(0), "caa_tag": "issue",
+	})
+	rule := validateCAARecord()
+	findings := rule.Validate(context.Background(), m)
+	if len(findings) != 1 {
+		t.Errorf("expected 1 finding for empty value, got %d", len(findings))
+	}
+}

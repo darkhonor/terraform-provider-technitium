@@ -181,9 +181,52 @@ func validateCNAMERecord() ValidationRule {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// MX record
+// ---------------------------------------------------------------------------
+
 func validateMXRecord() ValidationRule {
-	return ValidationRule{Name: "mx_record", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "mx_record",
+		Description: "MX record: value must be FQDN, priority required and in range",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "MX" {
+				return nil
+			}
+			var findings []Finding
+
+			priority, hasPriority := config.GetInt64("priority")
+			if !hasPriority {
+				findings = append(findings, Finding{
+					Attribute: "priority",
+					Summary:   "MX record missing required field: priority",
+					Detail:    "MX records require a priority value (0-65535).",
+				})
+			} else if !isInRange(priority, 0, 65535) {
+				findings = append(findings, Finding{
+					Attribute: "priority",
+					Summary:   fmt.Sprintf("Invalid MX record priority: %d is out of range", priority),
+					Detail:    "MX record priority must be between 0 and 65535.",
+				})
+			}
+
+			value, ok := config.GetString("value")
+			if !ok {
+				return findings
+			}
+			if !isValidFQDN(value) {
+				findings = append(findings, Finding{
+					Attribute: "value",
+					Summary:   fmt.Sprintf("Invalid MX record value: %q is not a valid FQDN", value),
+					Detail:    `MX records require a valid fully qualified domain name (e.g., "mail.example.com.").`,
+				})
+			}
+
+			return findings
+		},
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -246,12 +289,126 @@ func validatePTRRecord() ValidationRule {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SRV record
+// ---------------------------------------------------------------------------
+
 func validateSRVRecord() ValidationRule {
-	return ValidationRule{Name: "srv_record", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "srv_record",
+		Description: "SRV record: target must be FQDN, priority/weight/port required and in range",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "SRV" {
+				return nil
+			}
+			var findings []Finding
+
+			type numField struct {
+				name string
+				attr string
+			}
+			for _, f := range []numField{
+				{"priority", "priority"},
+				{"weight", "weight"},
+				{"port", "port"},
+			} {
+				val, has := config.GetInt64(f.attr)
+				if !has {
+					findings = append(findings, Finding{
+						Attribute: f.attr,
+						Summary:   fmt.Sprintf("SRV record missing required field: %s", f.name),
+						Detail:    fmt.Sprintf("SRV records require %s (0-65535).", f.name),
+					})
+				} else if !isInRange(val, 0, 65535) {
+					findings = append(findings, Finding{
+						Attribute: f.attr,
+						Summary:   fmt.Sprintf("Invalid SRV record %s: %d is out of range", f.name, val),
+						Detail:    fmt.Sprintf("SRV record %s must be between 0 and 65535.", f.name),
+					})
+				}
+			}
+
+			value, ok := config.GetString("value")
+			if !ok {
+				return findings
+			}
+			if !isValidFQDN(value) {
+				findings = append(findings, Finding{
+					Attribute: "value",
+					Summary:   fmt.Sprintf("Invalid SRV record target: %q is not a valid FQDN", value),
+					Detail:    `SRV records require a valid fully qualified domain name as target (e.g., "sip.example.com.").`,
+				})
+			}
+
+			return findings
+		},
+	}
+}
+
+// ---------------------------------------------------------------------------
+// CAA record
+// ---------------------------------------------------------------------------
+
+var validCAATags = map[string]bool{
+	"issue":     true,
+	"issuewild": true,
+	"iodef":     true,
 }
 
 func validateCAARecord() ValidationRule {
-	return ValidationRule{Name: "caa_record", Resource: ResourceRecord,
-		Validate: func(ctx context.Context, config ConfigAccessor) []Finding { return nil }}
+	return ValidationRule{
+		Name:        "caa_record",
+		Description: "CAA record: flags must be 0/128, tag must be issue/issuewild/iodef, value non-empty",
+		Resource:    ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			rt, ok := config.GetString("type")
+			if !ok || rt != "CAA" {
+				return nil
+			}
+			var findings []Finding
+
+			flags, hasFlags := config.GetInt64("caa_flags")
+			if !hasFlags {
+				findings = append(findings, Finding{
+					Attribute: "caa_flags",
+					Summary:   "CAA record missing required field: caa_flags",
+					Detail:    "CAA records require caa_flags (0 = non-critical, 128 = critical).",
+				})
+			} else if flags != 0 && flags != 128 {
+				findings = append(findings, Finding{
+					Attribute: "caa_flags",
+					Summary:   fmt.Sprintf("Invalid CAA record caa_flags: %d is not valid", flags),
+					Detail:    "CAA record caa_flags must be 0 (non-critical) or 128 (critical).",
+				})
+			}
+
+			tag, hasTag := config.GetString("caa_tag")
+			if !hasTag {
+				findings = append(findings, Finding{
+					Attribute: "caa_tag",
+					Summary:   "CAA record missing required field: caa_tag",
+					Detail:    `CAA records require caa_tag: one of "issue", "issuewild", "iodef".`,
+				})
+			} else if !validCAATags[tag] {
+				findings = append(findings, Finding{
+					Attribute: "caa_tag",
+					Summary:   fmt.Sprintf("Invalid CAA record caa_tag: %q is not a recognized CAA tag", tag),
+					Detail:    `CAA records require one of: "issue", "issuewild", "iodef".`,
+				})
+			}
+
+			value, ok := config.GetString("value")
+			if ok && value == "" {
+				findings = append(findings, Finding{
+					Attribute: "value",
+					Summary:   "Invalid CAA record value: value must not be empty",
+					Detail:    `CAA records require a non-empty value (e.g., "letsencrypt.org").`,
+				})
+			}
+
+			return findings
+		},
+	}
 }
