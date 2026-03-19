@@ -7,14 +7,17 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/provider"
 	"github.com/hashicorp/terraform-plugin-framework/provider/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -34,6 +37,10 @@ type TechnitiumProviderModel struct {
 	ServerURL      types.String         `tfsdk:"server_url"`
 	APIToken       types.String         `tfsdk:"api_token"`
 	SkipTLSVerify  types.Bool           `tfsdk:"skip_tls_verify"`
+	CACertFile     types.String         `tfsdk:"ca_cert_file"`
+	CACertDir      types.String         `tfsdk:"ca_cert_dir"`
+	TLSServerName  types.String         `tfsdk:"tls_server_name"`
+	TLSMinVersion  types.String         `tfsdk:"tls_min_version"`
 	STIGCompliance *STIGComplianceModel `tfsdk:"stig_compliance"`
 }
 
@@ -100,6 +107,30 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 			"skip_tls_verify": schema.BoolAttribute{
 				Description: "Skip TLS certificate verification. Generates STIG warning when stig_compliance is enabled (SC-8).",
 				Optional:    true,
+			},
+			"ca_cert_file": schema.StringAttribute{
+				Description: "Path to a PEM-encoded CA certificate file to validate the Technitium server's TLS certificate. " +
+					"May be set via the TECHNITIUM_CACERT environment variable.",
+				Optional: true,
+			},
+			"ca_cert_dir": schema.StringAttribute{
+				Description: "Path to a directory of PEM-encoded CA certificate files to validate the Technitium server's TLS certificate. " +
+					"Files that fail to parse are skipped. May be set via the TECHNITIUM_CAPATH environment variable.",
+				Optional: true,
+			},
+			"tls_server_name": schema.StringAttribute{
+				Description: "Name to use as the SNI host when connecting to the Technitium server via TLS. " +
+					"May be set via the TECHNITIUM_TLS_SERVER_NAME environment variable.",
+				Optional: true,
+			},
+			"tls_min_version": schema.StringAttribute{
+				Description: "Minimum TLS version to accept when connecting to the Technitium server. " +
+					"Valid values: \"1.2\", \"1.3\". Defaults to \"1.3\". " +
+					"May be set via the TECHNITIUM_TLS_MIN_VERSION environment variable.",
+				Optional: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("1.2", "1.3"),
+				},
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -180,9 +211,25 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
-	skipTLSVerify := false
+	// Resolve TLS configuration (HCL > env var > default)
+	var skipTLSPtr *bool
 	if !config.SkipTLSVerify.IsNull() {
-		skipTLSVerify = config.SkipTLSVerify.ValueBool()
+		v := config.SkipTLSVerify.ValueBool()
+		skipTLSPtr = &v
+	}
+	skipTLSVerify, err := resolveTLSBool(skipTLSPtr, "TECHNITIUM_SKIP_TLS_VERIFY", false)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid TLS configuration", err.Error())
+		return
+	}
+
+	caCertFile := resolveTLSString(config.CACertFile.ValueString(), "TECHNITIUM_CACERT")
+	caCertDir := resolveTLSString(config.CACertDir.ValueString(), "TECHNITIUM_CAPATH")
+	tlsServerName := resolveTLSString(config.TLSServerName.ValueString(), "TECHNITIUM_TLS_SERVER_NAME")
+	tlsMinVersion, err := resolveTLSMinVersion(config.TLSMinVersion.ValueString(), "TECHNITIUM_TLS_MIN_VERSION", "1.3")
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid TLS configuration", err.Error())
+		return
 	}
 
 	// Create API client
@@ -190,6 +237,10 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		BaseURL:       serverURL,
 		Token:         apiToken,
 		SkipTLSVerify: skipTLSVerify,
+		CACertFile:    caCertFile,
+		CACertDir:     caCertDir,
+		TLSServerName: tlsServerName,
+		TLSMinVersion: tlsMinVersion,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create API client", err.Error())
@@ -314,6 +365,45 @@ func (p *TechnitiumProvider) DataSources(_ context.Context) []func() datasource.
 		NewAllowedZoneDataSource,
 		NewAllowedZonesDataSource,
 	}
+}
+
+// resolveTLSString resolves a TLS string config value with HCL > env var > empty precedence.
+func resolveTLSString(hclValue, envVar string) string {
+	if hclValue != "" {
+		return hclValue
+	}
+	return os.Getenv(envVar)
+}
+
+// resolveTLSBool resolves a TLS bool config value with HCL > env var > default precedence.
+func resolveTLSBool(hclValue *bool, envVar string, defaultVal bool) (bool, error) {
+	if hclValue != nil {
+		return *hclValue, nil
+	}
+	envStr := os.Getenv(envVar)
+	if envStr != "" {
+		val, err := strconv.ParseBool(envStr)
+		if err != nil {
+			return false, fmt.Errorf("invalid value for %s: %q (expected true/false)", envVar, envStr)
+		}
+		return val, nil
+	}
+	return defaultVal, nil
+}
+
+// resolveTLSMinVersion resolves the TLS minimum version with HCL > env var > default precedence.
+func resolveTLSMinVersion(hclValue, envVar, defaultVal string) (string, error) {
+	result := hclValue
+	if result == "" {
+		result = os.Getenv(envVar)
+	}
+	if result == "" {
+		return defaultVal, nil
+	}
+	if result != "1.2" && result != "1.3" {
+		return "", fmt.Errorf("invalid value for %s: %q (must be \"1.2\" or \"1.3\")", envVar, result)
+	}
+	return result, nil
 }
 
 // validLevels are the allowed CNSSI 1253 / NIST 800-53 categorization levels.
