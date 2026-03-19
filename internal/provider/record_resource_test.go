@@ -5,6 +5,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -415,4 +416,59 @@ data "technitium_record" "web" {
   type = "A"
 }
 `, testAccAPIToken(), zone, zone)
+}
+
+func TestAccRecordResource_InputValidation_ARecordRejectsIPv6(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "technitium_record" "test" {
+  zone  = "example.com"
+  name  = "www.example.com"
+  type  = "A"
+  value = "2001:db8::1"
+}`,
+				ExpectError: regexp.MustCompile(`Invalid A record value`),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_InputValidation_InvalidType(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "technitium_record" "test" {
+  zone  = "example.com"
+  name  = "www.example.com"
+  type  = "INVALID"
+  value = "192.0.2.1"
+}`,
+				ExpectError: regexp.MustCompile(`Invalid record type`),
+			},
+		},
+	})
+}
+
+func TestAccRecordResource_InputValidation_CAAMissingTag(t *testing.T) {
+	resource.UnitTest(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: `
+resource "technitium_record" "test" {
+  zone      = "example.com"
+  name      = "example.com"
+  type      = "CAA"
+  value     = "letsencrypt.org"
+  caa_flags = 0
+}`,
+				ExpectError: regexp.MustCompile(`CAA record missing required field: caa_tag`),
+			},
+		},
+	})
 }
