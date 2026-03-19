@@ -4,7 +4,10 @@
 package provider
 
 import (
+	"strings"
 	"testing"
+
+	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 )
 
 func TestResolveTLSConfig_HCLWinsOverEnv(t *testing.T) {
@@ -63,3 +66,46 @@ func TestResolveTLSMinVersion_EnvInvalid(t *testing.T) {
 }
 
 func ptrBool(b bool) *bool { return &b }
+
+func TestBuildTLSDiagnostic_VersionMismatch_NoSTIG(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrVersionMismatch}, "https://dns.example.com", false, false)
+	if !strings.Contains(msg, "tls_min_version") { t.Error("should suggest tls_min_version") }
+	if !strings.Contains(msg, "skip_tls_verify") { t.Error("non-STIG should offer skip_tls_verify") }
+}
+
+func TestBuildTLSDiagnostic_VersionMismatch_STIG(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrVersionMismatch}, "https://dns.example.com", true, false)
+	if !strings.Contains(msg, "tls_min_version") { t.Error("should suggest tls_min_version") }
+	if strings.Contains(msg, "skip_tls_verify") { t.Error("STIG should NOT offer skip_tls_verify") }
+}
+
+func TestBuildTLSDiagnostic_VersionMismatch_NSS(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrVersionMismatch}, "https://dns.example.com", true, true)
+	if strings.Contains(msg, "tls_min_version") { t.Error("NSS should NOT offer tls_min_version fallback") }
+	if strings.Contains(msg, "skip_tls_verify") { t.Error("NSS should NOT offer skip_tls_verify") }
+	if !strings.Contains(msg, "Upgrade") || !strings.Contains(msg, "TLS 1.3") { t.Error("NSS should only suggest upgrading the server") }
+}
+
+func TestBuildTLSDiagnostic_UnknownAuthority_NoSTIG(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrUnknownAuthority}, "https://dns.example.com", false, false)
+	if !strings.Contains(msg, "ca_cert_file") { t.Error("should suggest ca_cert_file") }
+	if !strings.Contains(msg, "ca_cert_dir") { t.Error("should suggest ca_cert_dir") }
+	if !strings.Contains(msg, "skip_tls_verify") { t.Error("non-STIG should offer skip_tls_verify") }
+}
+
+func TestBuildTLSDiagnostic_UnknownAuthority_NSS(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrUnknownAuthority}, "https://dns.example.com", true, true)
+	if !strings.Contains(msg, "ca_cert_file") { t.Error("should suggest ca_cert_file") }
+	if strings.Contains(msg, "skip_tls_verify") { t.Error("NSS should NOT offer skip_tls_verify") }
+}
+
+func TestBuildTLSDiagnostic_CertificateInvalid_NoSTIG(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrCertificateInvalid}, "https://dns.example.com", false, false)
+	if !strings.Contains(msg, "ca_cert_file") || !strings.Contains(msg, "ca_cert_dir") { t.Error("should suggest verifying correct CA chain") }
+	if !strings.Contains(msg, "skip_tls_verify") { t.Error("non-STIG should offer skip_tls_verify") }
+}
+
+func TestBuildTLSDiagnostic_NotTLS(t *testing.T) {
+	msg := buildTLSDiagnostic(client.TLSError{Kind: client.TLSErrNotTLS}, "https://dns.example.com", false, false)
+	if msg != "" { t.Error("non-TLS errors should return empty (pass through original error)") }
+}

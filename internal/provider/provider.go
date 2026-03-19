@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
@@ -232,6 +233,13 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
+	// Extract STIG/NSS booleans before Ping for tiered diagnostics
+	var stigEnabled, nssEnabled bool
+	if config.STIGCompliance != nil {
+		stigEnabled = config.STIGCompliance.Enabled.ValueBool()
+		nssEnabled = config.STIGCompliance.NSS.ValueBool()
+	}
+
 	// Create API client
 	apiClient, err := client.NewClient(client.ClientConfig{
 		BaseURL:       serverURL,
@@ -247,10 +255,18 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
-	// Verify connectivity
+	// Verify connectivity with tiered TLS error diagnostics
 	if err := apiClient.Ping(); err != nil {
-		resp.Diagnostics.AddError("Failed to connect to Technitium DNS Server",
-			fmt.Sprintf("Could not reach %s: %s", serverURL, err.Error()))
+		isHTTPS := strings.HasPrefix(serverURL, "https://")
+		if isHTTPS {
+			tlsErr := client.ClassifyTLSError(err)
+			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
+				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+				return
+			}
+		}
+		resp.Diagnostics.AddError("Unable to connect to Technitium server",
+			fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error()))
 		return
 	}
 
@@ -260,8 +276,8 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	}
 
 	if config.STIGCompliance != nil {
-		providerData.STIGEnabled = config.STIGCompliance.Enabled.ValueBool()
-		providerData.NSS = config.STIGCompliance.NSS.ValueBool()
+		providerData.STIGEnabled = stigEnabled
+		providerData.NSS = nssEnabled
 
 		if config.STIGCompliance.Categorization != nil {
 			cat, diags := validateCategorization(config.STIGCompliance.Categorization, providerData.NSS)
@@ -496,6 +512,56 @@ func validateEnforcement(enforcement string) diag.Diagnostics {
 			fmt.Sprintf("enforcement must be one of: strict, warn, silent. Got: %q", enforcement))
 	}
 	return diags
+}
+
+// buildTLSDiagnostic produces a context-aware error message for TLS handshake
+// failures. The message is tailored to the user's STIG/NSS context: NSS users
+// receive only server-upgrade guidance, STIG users see CA cert options without
+// skip_tls_verify, and non-STIG users see all available remediation options.
+// Returns an empty string when the error is not TLS-related (caller falls
+// through to the generic connectivity error).
+func buildTLSDiagnostic(tlsErr client.TLSError, serverURL string, stigEnabled, nss bool) string {
+	switch tlsErr.Kind {
+	case client.TLSErrVersionMismatch:
+		msg := fmt.Sprintf("Connection to %s failed: TLS 1.3 not supported by the server.", serverURL)
+		if nss {
+			msg += " NSS environments require TLS 1.3 (SC-8). Upgrade the server's TLS configuration to support TLS 1.3."
+		} else if stigEnabled {
+			msg += " To resolve, either:\n" +
+				"  - Upgrade the server's TLS configuration to support TLS 1.3\n" +
+				"  - Set tls_min_version = \"1.2\" in the provider configuration (will generate STIG warning)"
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Upgrade the server's TLS configuration to support TLS 1.3\n" +
+				"  - Set tls_min_version = \"1.2\" in the provider configuration\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrUnknownAuthority:
+		msg := fmt.Sprintf("Connection to %s failed: server certificate signed by unknown authority.", serverURL)
+		if nss || stigEnabled {
+			msg += " To resolve:\n" +
+				"  - Configure ca_cert_file or ca_cert_dir with the CA certificate that signed the server's certificate"
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Configure ca_cert_file or ca_cert_dir with the CA certificate that signed the server's certificate\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrCertificateInvalid, client.TLSErrHostnameMismatch:
+		msg := fmt.Sprintf("Connection to %s failed: server certificate verification failed.", serverURL)
+		if nss || stigEnabled {
+			msg += " Verify the correct CA chain is configured in ca_cert_file or ca_cert_dir."
+		} else {
+			msg += " To resolve, either:\n" +
+				"  - Verify the correct CA chain is configured in ca_cert_file or ca_cert_dir\n" +
+				"  - Set skip_tls_verify = true to bypass certificate verification entirely"
+		}
+		return msg
+	case client.TLSErrNotTLS:
+		return ""
+	}
+	return ""
 }
 
 // validateSuppressIDs checks all suppression IDs are valid DNS-REQ-XXX IDs.
