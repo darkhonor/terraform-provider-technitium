@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/inputvalidation"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 )
 
@@ -29,9 +30,13 @@ func (v inputConfigValidator) MarkdownDescription(ctx context.Context) string {
 }
 
 func (v inputConfigValidator) ValidateResource(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	adapter := &inputvalidation.TFConfigAdapter{Config: req.Config}
+	adapter := inputvalidation.NewTFConfigAdapter(ctx, req.Config)
 	findings := v.registry.RunRules(ctx, v.resource, adapter)
 	for _, f := range findings {
-		resp.Diagnostics.AddError(f.Summary, f.Detail)
+		resp.Diagnostics.AddAttributeError(
+			path.Root(f.Attribute),
+			f.Summary,
+			f.Detail,
+		)
 	}
 }
