@@ -5,11 +5,14 @@ package client
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -69,10 +72,37 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	transport := &http.Transport{}
-	if cfg.SkipTLSVerify {
-		transport.TLSClientConfig = &tls.Config{
-			InsecureSkipVerify: true, //nolint:gosec // User explicitly opted in via skip_tls_verify
+	isHTTPS := strings.HasPrefix(cfg.BaseURL, "https://")
+
+	if isHTTPS {
+		tlsConfig := &tls.Config{} //nolint:gosec // MinVersion set below
+
+		rootCAs, err := loadCACerts(cfg.CACertFile, cfg.CACertDir)
+		if err != nil {
+			return nil, err
 		}
+		if rootCAs != nil {
+			tlsConfig.RootCAs = rootCAs
+		}
+
+		if cfg.TLSServerName != "" {
+			tlsConfig.ServerName = cfg.TLSServerName
+		}
+
+		switch cfg.TLSMinVersion {
+		case "1.3":
+			tlsConfig.MinVersion = tls.VersionTLS13
+		case "1.2":
+			tlsConfig.MinVersion = tls.VersionTLS12
+		default:
+			return nil, fmt.Errorf("invalid tls_min_version %q: must be \"1.2\" or \"1.3\"", cfg.TLSMinVersion)
+		}
+
+		if cfg.SkipTLSVerify {
+			tlsConfig.InsecureSkipVerify = true //nolint:gosec // User explicitly opted in
+		}
+
+		transport.TLSClientConfig = tlsConfig
 	}
 
 	return &Client{
@@ -83,6 +113,60 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 			Transport: transport,
 		},
 	}, nil
+}
+
+// loadCACerts loads PEM certificates from certFile and/or certDir into a new
+// x509.CertPool. Returns nil (no error) if both paths are empty. Directory
+// loading is non-recursive and skips files that contain no valid PEM certs
+// (Vault convention). Returns an error if the pool would be empty and only a
+// certDir was specified (certFile parse failures are always fatal).
+func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
+	if certFile == "" && certDir == "" {
+		return nil, nil
+	}
+	pool := x509.NewCertPool()
+	loaded := 0
+
+	if certFile != "" {
+		data, err := os.ReadFile(certFile)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("CA certificate file not found: %s", certFile)
+			}
+			return nil, fmt.Errorf("failed to read CA certificate file: %w", err)
+		}
+		if !pool.AppendCertsFromPEM(data) {
+			return nil, fmt.Errorf("failed to parse CA certificate: %s", certFile)
+		}
+		loaded++
+	}
+
+	if certDir != "" {
+		entries, err := os.ReadDir(certDir)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return nil, fmt.Errorf("CA certificate directory not found: %s", certDir)
+			}
+			return nil, fmt.Errorf("failed to read CA certificate directory: %w", err)
+		}
+		for _, entry := range entries {
+			if entry.IsDir() {
+				continue
+			}
+			data, err := os.ReadFile(filepath.Join(certDir, entry.Name()))
+			if err != nil {
+				continue
+			}
+			if pool.AppendCertsFromPEM(data) {
+				loaded++
+			}
+		}
+	}
+
+	if loaded == 0 && certDir != "" && certFile == "" {
+		return nil, fmt.Errorf("no valid PEM certificates found in %s", certDir)
+	}
+	return pool, nil
 }
 
 // doGet performs a GET request to the Technitium API and returns the parsed response.
