@@ -90,10 +90,19 @@ func (r *Registry) RulesFor(resource TargetResource) []ValidationRule
 
 ### ConfigValidator Adapter
 
+The adapter lives in the `provider` package (not `inputvalidation`) because it needs
+to implement `resource.ConfigValidator` from the Terraform framework. This keeps the
+`inputvalidation` package free of framework dependencies.
+
 ```go
-// NewResourceValidator returns a resource.ConfigValidator that runs all
-// registered rules for the given target resource.
-func NewResourceValidator(registry *Registry, target TargetResource) resource.ConfigValidator
+// In internal/provider/input_config_validator.go:
+// inputConfigValidator implements resource.ConfigValidator for input validation.
+type inputConfigValidator struct {
+    registry *inputvalidation.Registry
+    resource inputvalidation.TargetResource
+}
+
+func newInputConfigValidator(registry *Registry, resource TargetResource) inputConfigValidator
 ```
 
 ### Registry Initialization
@@ -167,8 +176,8 @@ Type-specific required fields are enforced before value validation:
 |---|---|
 | `isValidIPv4(s string) bool` | `net.ParseIP` + `.To4() != nil` |
 | `isValidIPv6(s string) bool` | `net.ParseIP` + NOT v4-mapped |
-| `isValidFQDN(s string) bool` | RFC 1123 labels, requires at least one dot, trailing dot optional |
-| `isValidHostname(s string) bool` | RFC 1123 labels, allows single-label names, trailing dot optional |
+| `isValidFQDN(s string) bool` | RFC 1123 labels (underscores allowed for SRV/DKIM), requires at least one dot, trailing dot optional |
+| `isValidHostname(s string) bool` | RFC 1123 labels (underscores allowed), allows single-label names, trailing dot optional |
 | `isIPAddress(s string) bool` | Rejects IPs in FQDN/hostname fields |
 | `isInRange(val, min, max int64) bool` | Numeric range check |
 
