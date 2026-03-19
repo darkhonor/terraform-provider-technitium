@@ -285,15 +285,29 @@ var TSIGKeyBindings = []ValidatorBinding{
 // Provider bindings
 // ---------------------------------------------------------------------------
 
-// ProviderBindings maps DNS security requirements to provider-level attributes.
+// ProviderBindings defines STIG validators for provider-level TLS configuration.
+// Uses DNS-REQ-028 (TLS transport encryption), NOT DNS-REQ-001 (DNSSEC zone signing).
 var ProviderBindings = []ValidatorBinding{
 	{
 		RequirementID: "DNS-REQ-028",
 		Resource:      TargetProvider,
+		Attributes:    []string{"server_url"},
+		StatelessFn:   validateTLSEnabled,
+		Implemented:   true,
+	},
+	{
+		RequirementID: "DNS-REQ-028",
+		Resource:      TargetProvider,
+		Attributes:    []string{"tls_min_version"},
+		StatelessFn:   validateTLSMinVersion,
+		Implemented:   true,
+	},
+	{
+		RequirementID: "DNS-REQ-028",
+		Resource:      TargetProvider,
 		Attributes:    []string{"skip_tls_verify"},
-		Implemented:   false,
-		StatelessFn:   nil,
-		StatefulFn:    nil,
+		StatelessFn:   validateTLSVerification,
+		Implemented:   true,
 	},
 }
 
@@ -506,4 +520,35 @@ func validateTSIGAlgorithm(ctx context.Context, config ConfigAccessor) bool {
 	default:
 		return false
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Provider validator functions — DNS-REQ-028 (SC-8 TLS transport encryption)
+// ---------------------------------------------------------------------------
+
+// validateTLSEnabled checks that server_url uses HTTPS (SC-8).
+func validateTLSEnabled(ctx context.Context, config ConfigAccessor) bool {
+	url, ok := config.GetString("server_url")
+	if !ok {
+		return true
+	}
+	return strings.HasPrefix(url, "https://")
+}
+
+// validateTLSMinVersion checks that tls_min_version is "1.3" (SC-8).
+func validateTLSMinVersion(ctx context.Context, config ConfigAccessor) bool {
+	version, ok := config.GetString("tls_min_version")
+	if !ok {
+		return true
+	}
+	return version == "1.3"
+}
+
+// validateTLSVerification checks that skip_tls_verify is false (SC-8).
+func validateTLSVerification(ctx context.Context, config ConfigAccessor) bool {
+	skip, ok := config.GetBool("skip_tls_verify")
+	if !ok {
+		return true
+	}
+	return !skip
 }
