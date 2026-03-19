@@ -80,3 +80,100 @@ func TestRegistry_IsolatesByResource(t *testing.T) {
 		t.Errorf("zone rules mismatch")
 	}
 }
+
+func TestMockAccessor_GetString(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"type":  "A",
+		"value": "192.0.2.1",
+	})
+	val, ok := m.GetString("type")
+	if !ok || val != "A" {
+		t.Errorf("expected (A, true), got (%s, %v)", val, ok)
+	}
+	_, ok = m.GetString("missing")
+	if ok {
+		t.Error("expected ok=false for missing key")
+	}
+}
+
+func TestMockAccessor_GetInt64(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"priority": int64(10),
+	})
+	val, ok := m.GetInt64("priority")
+	if !ok || val != 10 {
+		t.Errorf("expected (10, true), got (%d, %v)", val, ok)
+	}
+	_, ok = m.GetInt64("missing")
+	if ok {
+		t.Error("expected ok=false for missing key")
+	}
+}
+
+func TestMockAccessor_GetBool(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"enabled": true,
+	})
+	val, ok := m.GetBool("enabled")
+	if !ok || val != true {
+		t.Errorf("expected (true, true), got (%v, %v)", val, ok)
+	}
+}
+
+func TestMockAccessor_GetStringList(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"names": []string{"a", "b"},
+	})
+	val, ok := m.GetStringList("names")
+	if !ok || len(val) != 2 {
+		t.Errorf("expected 2-element list, got %v", val)
+	}
+}
+
+func TestRunRules_CollectsFindings(t *testing.T) {
+	r := NewRegistry()
+	r.Register(ValidationRule{
+		Name:     "always_fail",
+		Resource: ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			return []Finding{{
+				Attribute: "value",
+				Summary:   "bad value",
+				Detail:    "fix it",
+			}}
+		},
+	})
+	r.Register(ValidationRule{
+		Name:     "always_pass",
+		Resource: ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			return nil
+		},
+	})
+
+	m := NewMockAccessor(map[string]interface{}{})
+	findings := r.RunRules(context.Background(), ResourceRecord, m)
+	if len(findings) != 1 {
+		t.Fatalf("expected 1 finding, got %d", len(findings))
+	}
+	if findings[0].Summary != "bad value" {
+		t.Errorf("unexpected summary: %s", findings[0].Summary)
+	}
+}
+
+func TestRunRules_EmptyForValidInput(t *testing.T) {
+	r := NewRegistry()
+	r.Register(ValidationRule{
+		Name:     "always_pass",
+		Resource: ResourceRecord,
+		Validate: func(ctx context.Context, config ConfigAccessor) []Finding {
+			return nil
+		},
+	})
+
+	m := NewMockAccessor(map[string]interface{}{})
+	findings := r.RunRules(context.Background(), ResourceRecord, m)
+	if len(findings) != 0 {
+		t.Fatalf("expected 0 findings, got %d", len(findings))
+	}
+}

@@ -68,3 +68,72 @@ func (r *Registry) Register(rule ValidationRule) {
 func (r *Registry) RulesFor(resource TargetResource) []ValidationRule {
 	return r.rules[resource]
 }
+
+// ---------------------------------------------------------------------------
+// MockAccessor — test double
+// ---------------------------------------------------------------------------
+
+// MockAccessor is a test double for ConfigAccessor.
+type MockAccessor struct {
+	attrs map[string]interface{}
+}
+
+// NewMockAccessor creates a MockAccessor pre-loaded with the given attrs.
+func NewMockAccessor(attrs map[string]interface{}) *MockAccessor {
+	return &MockAccessor{attrs: attrs}
+}
+
+func (m *MockAccessor) GetString(key string) (string, bool) {
+	v, ok := m.attrs[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+func (m *MockAccessor) GetBool(key string) (bool, bool) {
+	v, ok := m.attrs[key]
+	if !ok {
+		return false, false
+	}
+	b, ok := v.(bool)
+	return b, ok
+}
+
+func (m *MockAccessor) GetInt64(key string) (int64, bool) {
+	v, ok := m.attrs[key]
+	if !ok {
+		return 0, false
+	}
+	i, ok := v.(int64)
+	return i, ok
+}
+
+func (m *MockAccessor) GetStringList(key string) ([]string, bool) {
+	v, ok := m.attrs[key]
+	if !ok {
+		return nil, false
+	}
+	sl, ok := v.([]string)
+	return sl, ok
+}
+
+// Interface compliance assertion.
+var _ ConfigAccessor = &MockAccessor{}
+
+// ---------------------------------------------------------------------------
+// RunRules — executes all rules for a given resource
+// ---------------------------------------------------------------------------
+
+// RunRules executes all registered rules for the given resource and returns
+// all findings. An empty slice means all validations passed.
+func (r *Registry) RunRules(ctx context.Context, resource TargetResource, config ConfigAccessor) []Finding {
+	var findings []Finding
+	for _, rule := range r.rules[resource] {
+		if results := rule.Validate(ctx, config); len(results) > 0 {
+			findings = append(findings, results...)
+		}
+	}
+	return findings
+}
