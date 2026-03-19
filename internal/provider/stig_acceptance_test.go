@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -242,4 +243,129 @@ resource "technitium_server_settings" "test" {
 			},
 		},
 	})
+}
+
+// ---------------------------------------------------------------------------
+// TLS provider-level validator tests
+// ---------------------------------------------------------------------------
+
+// TestAccSTIG_Strict_HTTP_PlanFails verifies that strict mode rejects an HTTP
+// server_url before any network connectivity is attempted (DNS-REQ-028 / SC-8).
+func TestAccSTIG_Strict_HTTP_PlanFails(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSTIGProviderConfigHTTP("strict", nil, "moderate") + `
+data "technitium_zones" "test" {}
+`,
+				ExpectError: regexp.MustCompile(`DNS-REQ-028.*SC-8`),
+			},
+		},
+	})
+}
+
+// TestAccSTIG_Warn_HTTP_PlanSucceeds verifies that warn mode allows an HTTP
+// server_url without blocking the plan.
+func TestAccSTIG_Warn_HTTP_PlanSucceeds(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSTIGProviderConfigHTTP("warn", nil, "moderate") + `
+data "technitium_zones" "test" {}
+`,
+			},
+		},
+	})
+}
+
+// TestAccSTIG_Strict_SkipTLSVerify_PlanFails verifies that strict mode rejects
+// skip_tls_verify = true (DNS-REQ-028 / SC-8).
+func TestAccSTIG_Strict_SkipTLSVerify_PlanFails(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSTIGProviderConfigSkipTLS("strict", nil, "moderate") + `
+data "technitium_zones" "test" {}
+`,
+				ExpectError: regexp.MustCompile(`DNS-REQ-028.*SC-8`),
+			},
+		},
+	})
+}
+
+// TestAccSTIG_Suppress_TLSReq_SkipVerify_Succeeds verifies that suppressing
+// DNS-REQ-028 downgrades the finding so skip_tls_verify does not block the plan.
+func TestAccSTIG_Suppress_TLSReq_SkipVerify_Succeeds(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccSTIGProviderConfigSkipTLS("strict", []string{"DNS-REQ-028"}, "moderate") + `
+data "technitium_zones" "test" {}
+`,
+			},
+		},
+	})
+}
+
+// testAccSTIGProviderConfigHTTP generates a provider config with an HTTP
+// server_url and the given STIG compliance settings.
+func testAccSTIGProviderConfigHTTP(enforcement string, suppress []string, baseline string) string {
+	suppressStr := "[]"
+	if len(suppress) > 0 {
+		items := make([]string, len(suppress))
+		for i, s := range suppress {
+			items[i] = fmt.Sprintf("%q", s)
+		}
+		suppressStr = fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	}
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url = "http://localhost:5380"
+  api_token  = %q
+
+  stig_compliance {
+    enabled     = true
+    enforcement = %q
+    suppress    = %s
+
+    categorization {
+      baseline = %q
+    }
+  }
+}
+`, testAccAPIToken(), enforcement, suppressStr, baseline)
+}
+
+// testAccSTIGProviderConfigSkipTLS generates a provider config with an HTTPS
+// server_url and skip_tls_verify = true and the given STIG compliance settings.
+func testAccSTIGProviderConfigSkipTLS(enforcement string, suppress []string, baseline string) string {
+	suppressStr := "[]"
+	if len(suppress) > 0 {
+		items := make([]string, len(suppress))
+		for i, s := range suppress {
+			items[i] = fmt.Sprintf("%q", s)
+		}
+		suppressStr = fmt.Sprintf("[%s]", strings.Join(items, ", "))
+	}
+	return fmt.Sprintf(`
+provider "technitium" {
+  server_url      = "https://localhost:5380"
+  api_token       = %q
+  skip_tls_verify = true
+
+  stig_compliance {
+    enabled     = true
+    enforcement = %q
+    suppress    = %s
+
+    categorization {
+      baseline = %q
+    }
+  }
+}
+`, testAccAPIToken(), enforcement, suppressStr, baseline)
 }
