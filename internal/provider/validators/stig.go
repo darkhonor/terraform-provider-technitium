@@ -282,6 +282,22 @@ var TSIGKeyBindings = []ValidatorBinding{
 }
 
 // ---------------------------------------------------------------------------
+// Provider bindings
+// ---------------------------------------------------------------------------
+
+// ProviderBindings maps DNS security requirements to provider-level attributes.
+var ProviderBindings = []ValidatorBinding{
+	{
+		RequirementID: "DNS-REQ-028",
+		Resource:      TargetProvider,
+		Attributes:    []string{"skip_tls_verify"},
+		Implemented:   false,
+		StatelessFn:   nil,
+		StatefulFn:    nil,
+	},
+}
+
+// ---------------------------------------------------------------------------
 // AllBindings aggregates all binding slices for registry inspection.
 // ---------------------------------------------------------------------------
 
@@ -292,6 +308,7 @@ func AllBindings() []ValidatorBinding {
 	all = append(all, ServerSettingsBindings...)
 	all = append(all, RecordBindings...)
 	all = append(all, TSIGKeyBindings...)
+	all = append(all, ProviderBindings...)
 	return all
 }
 

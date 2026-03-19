@@ -17,6 +17,7 @@ const (
 	ResourceRecord
 	ResourceServerSettings
 	ResourceTSIGKey
+	TargetProvider TargetResource = 4
 )
 
 // CheckType identifies when a compliance check is evaluated.
@@ -84,7 +85,7 @@ var BaselineMembership = map[string]string{
 	"SI-10": "MODERATE",
 }
 
-// DNSSecurityRequirements is the authoritative list of all 27 DNS security requirements
+// DNSSecurityRequirements is the authoritative list of all DNS security requirements
 // derived from DISA STIG data for BIND 9.x and Windows Server 2022 DNS.
 var DNSSecurityRequirements = []DNSSecurityRequirement{
 	// -------------------------------------------------------------------------
@@ -597,6 +598,24 @@ var DNSSecurityRequirements = []DNSSecurityRequirement{
 				RuleID:      "WDNS-22-000001",
 				BenchmarkID: "MS_Windows_Server_2022_DNS_STIG",
 				Title:       "Dynamic update client limits.",
+			},
+		},
+		CheckType: StatelessCheck,
+	},
+	// -------------------------------------------------------------------------
+	// Provider-Level Requirements
+	// -------------------------------------------------------------------------
+	{
+		ID:       "DNS-REQ-028",
+		Title:    "Management plane connections must use encrypted transport (TLS)",
+		Severity: "medium",
+		Controls: []string{"SC-8"},
+		CCIs:     []string{"CCI-002418", "CCI-002420", "CCI-002421"},
+		Provenance: []STIGProvenance{
+			{
+				RuleID:      "SV-270286r1_rule",
+				BenchmarkID: "DNS_Policy",
+				Title:       "Management connections to DNS infrastructure must use encrypted transport",
 			},
 		},
 		CheckType: StatelessCheck,

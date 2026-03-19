@@ -574,7 +574,7 @@ func validateSuppressIDs(ids []string) diag.Diagnostics {
 	for _, id := range ids {
 		if !validIDs[id] {
 			diags.AddError("Invalid suppression ID",
-				fmt.Sprintf("suppress contains unknown requirement ID: %q. Valid IDs are DNS-REQ-001 through DNS-REQ-027.", id))
+				fmt.Sprintf("suppress contains unknown requirement ID: %q. Valid IDs are DNS-REQ-001 through DNS-REQ-%03d.", id, len(validators.DNSSecurityRequirements)))
 		}
 	}
 	return diags

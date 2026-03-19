@@ -234,6 +234,13 @@ func (e *Engine) ValidateConfig(ctx context.Context, resource TargetResource, co
 	}
 }
 
+// ValidateProvider evaluates provider-level validators during Configure().
+// Delegates to ValidateConfig with TargetProvider — same enforcement,
+// suppression, and diagnostic logic as resource validators.
+func (e *Engine) ValidateProvider(ctx context.Context, config ConfigAccessor, diags *diag.Diagnostics) {
+	e.ValidateConfig(ctx, TargetProvider, config, diags)
+}
+
 // ValidatePlan iterates bindings for the given resource, evaluates stateful
 // validators, and emits findings based on enforcement policy.
 func (e *Engine) ValidatePlan(ctx context.Context, resource TargetResource, plan PlanAccessor, state StateAccessor, diags *diag.Diagnostics) {
