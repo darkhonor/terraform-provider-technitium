@@ -19,6 +19,9 @@ similar). Users deserve clear, immediate feedback at plan time.
 - **PTR accepts relative hostnames** — single-label names are valid (e.g., `rancher` in a reverse zone)
 - **CAA included** — full coverage of all 9 supported record types
 - **Both ConfigValidators coexist** — input validation and STIG run independently per Terraform framework standard behavior
+- **Record type validation** — the `type` field itself is validated against the 9 recognized types
+- **Cross-field presence checks** — type-specific required fields enforced (MX needs priority, SRV needs priority/weight/port, CAA needs caa_flags/caa_tag)
+- **FQDN trailing dot optional** — `isValidFQDN` accepts both `mail.example.com` and `mail.example.com.`
 
 ## Architecture
 
@@ -62,6 +65,8 @@ type Finding struct {
 
 // ConfigAccessor abstracts Terraform config access (same pattern as STIG engine,
 // own interface — no import dependency).
+// Note: includes GetInt64 which the STIG ConfigAccessor currently lacks. The STIG
+// accessor will gain GetInt64 when DNS-REQ-010 is implemented (separate follow-up).
 type ConfigAccessor interface {
     GetString(path string) (string, bool)
     GetBool(path string) (bool, bool)
@@ -91,9 +96,54 @@ func (r *Registry) RulesFor(resource TargetResource) []ValidationRule
 func NewResourceValidator(registry *Registry, target TargetResource) resource.ConfigValidator
 ```
 
+### Registry Initialization
+
+A package-level `DefaultRegistry()` function creates and populates the registry with all
+built-in rules. This is called once per resource during `NewRecordResource()` (or equivalent).
+No provider data injection needed — input validation is unconditional.
+
+```go
+// DefaultRegistry returns a registry pre-loaded with all built-in validation rules.
+func DefaultRegistry() *Registry {
+    r := NewRegistry()
+    registerRecordRules(r)
+    // registerZoneRules(r) — future
+    return r
+}
+
+// registerRecordRules adds all DNS record validation rules to the registry.
+func registerRecordRules(r *Registry) {
+    r.Register(validateRecordType())
+    r.Register(validateARecord())
+    r.Register(validateAAAARecord())
+    // ... one per record type
+}
+```
+
 ## Validation Rules
 
-### Record Types
+### Record Type Field
+
+The `type` attribute itself is validated before any type-specific rules fire:
+
+| Field | Validation | Rejects |
+|---|---|---|
+| `type` | Must be one of: `A`, `AAAA`, `CNAME`, `MX`, `NS`, `PTR`, `SRV`, `TXT`, `CAA` (case-sensitive) | Typos, unknown types, lowercase variants |
+
+If the `type` field is invalid, type-specific validators are skipped (no point validating
+value format when we don't know what type it should be).
+
+### Cross-Field Presence
+
+Type-specific required fields are enforced before value validation:
+
+| Record Type | Required Fields | Error if Missing |
+|---|---|---|
+| MX | `priority` | "MX records require a priority value (0-65535)" |
+| SRV | `priority`, `weight`, `port` | "SRV records require priority, weight, and port" |
+| CAA | `caa_flags`, `caa_tag` | "CAA records require caa_flags and caa_tag" |
+
+### Record Value Types
 
 | Record Type | Field(s) | Validation | Rejects |
 |---|---|---|---|
@@ -117,8 +167,8 @@ func NewResourceValidator(registry *Registry, target TargetResource) resource.Co
 |---|---|
 | `isValidIPv4(s string) bool` | `net.ParseIP` + `.To4() != nil` |
 | `isValidIPv6(s string) bool` | `net.ParseIP` + NOT v4-mapped |
-| `isValidFQDN(s string) bool` | RFC 1123 labels, requires at least one dot |
-| `isValidHostname(s string) bool` | RFC 1123 labels, allows single-label names |
+| `isValidFQDN(s string) bool` | RFC 1123 labels, requires at least one dot, trailing dot optional |
+| `isValidHostname(s string) bool` | RFC 1123 labels, allows single-label names, trailing dot optional |
 | `isIPAddress(s string) bool` | Rejects IPs in FQDN/hostname fields |
 | `isInRange(val, min, max int64) bool` | Numeric range check |
 
@@ -183,16 +233,26 @@ CAA records require one of: "issue", "issuewild", "iodef".
 ## Testing Strategy
 
 1. **Helper unit tests** (`helpers_test.go`): Table-driven tests for each helper function
-   with valid and invalid inputs, edge cases (empty, whitespace, CIDR, v4-mapped v6, etc.)
+   with valid and invalid inputs, edge cases including:
+   - Empty strings, whitespace
+   - CIDR notation (`192.168.1.0/24`) — rejected for A records
+   - IPv4-mapped IPv6 (`::ffff:192.0.2.1`) — rejected for AAAA records
+   - Zone-scoped IPv6 (`fe80::1%eth0`) — rejected (Go's `net.ParseIP` rejects these)
+   - Trailing dots on FQDNs — accepted
+   - Single-label hostnames — accepted by `isValidHostname`, rejected by `isValidFQDN`
 2. **Rule unit tests** (`dns_record_test.go`): Table-driven tests per record type using
    mock ConfigAccessor. Verify correct Findings returned for valid/invalid inputs.
+   Includes cross-field presence tests (MX without priority, SRV without port, etc.)
 3. **Integration test**: Acceptance test confirming ConfigValidator fires during
    `terraform validate` with an invalid record config — verifies end-to-end wiring.
 
 ## Future Extension Points
 
 - **Zone validators** (`dns_zone.go`): Zone attribute validation (zone name format,
-  transfer network CIDRs, etc.)
+  transfer network CIDRs, etc.). File omitted until zone validation is needed — no
+  empty placeholder.
+- **`name` field validation**: The record `name` attribute could be validated as a valid
+  hostname/FQDN using the same helpers. Deferred to keep scope focused on value fields.
 - **Auto-PTR creation** (Vikunja #27): Optional boolean on A/AAAA records to
   auto-create associated PTR records
 - **Additional record types**: As the provider adds support for more record types,
