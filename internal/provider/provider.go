@@ -186,7 +186,11 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	}
 
 	// Create API client
-	apiClient, err := client.NewClient(serverURL, apiToken, skipTLSVerify)
+	apiClient, err := client.NewClient(client.ClientConfig{
+		BaseURL:       serverURL,
+		Token:         apiToken,
+		SkipTLSVerify: skipTLSVerify,
+	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create API client", err.Error())
 		return

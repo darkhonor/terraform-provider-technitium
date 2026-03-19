@@ -18,7 +18,7 @@ func newTestServer(t *testing.T, handler http.HandlerFunc) *httptest.Server {
 }
 
 func TestNewClient_ValidInputs(t *testing.T) {
-	c, err := NewClient("http://localhost:5380", "test-token", false)
+	c, err := NewClient(ClientConfig{BaseURL: "http://localhost:5380", Token: "test-token"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -28,7 +28,7 @@ func TestNewClient_ValidInputs(t *testing.T) {
 }
 
 func TestNewClient_TrailingSlash(t *testing.T) {
-	c, err := NewClient("http://localhost:5380/", "test-token", false)
+	c, err := NewClient(ClientConfig{BaseURL: "http://localhost:5380/", Token: "test-token"})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -38,21 +38,21 @@ func TestNewClient_TrailingSlash(t *testing.T) {
 }
 
 func TestNewClient_EmptyURL(t *testing.T) {
-	_, err := NewClient("", "test-token", false)
+	_, err := NewClient(ClientConfig{BaseURL: "", Token: "test-token"})
 	if err == nil {
 		t.Fatal("expected error for empty URL")
 	}
 }
 
 func TestNewClient_EmptyToken(t *testing.T) {
-	_, err := NewClient("http://localhost:5380", "", false)
+	_, err := NewClient(ClientConfig{BaseURL: "http://localhost:5380", Token: ""})
 	if err == nil {
 		t.Fatal("expected error for empty token")
 	}
 }
 
 func TestNewClient_SkipTLSVerify(t *testing.T) {
-	c, err := NewClient("https://localhost:5380", "test-token", true)
+	c, err := NewClient(ClientConfig{BaseURL: "https://localhost:5380", Token: "test-token", SkipTLSVerify: true})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -74,7 +74,7 @@ func TestDoGet_Success(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	resp, err := c.doGet("/api/zones/list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -93,7 +93,7 @@ func TestDoGet_APIError(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	_, err := c.doGet("/api/zones/options/get", nil)
 	if err == nil {
 		t.Fatal("expected error")
@@ -116,7 +116,7 @@ func TestDoGet_InvalidToken(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "bad-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "bad-token"})
 	_, err := c.doGet("/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error")
@@ -137,7 +137,7 @@ func TestDoGet_HTTPError(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	_, err := c.doGet("/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error for HTTP 500")
@@ -150,7 +150,7 @@ func TestDoGet_InvalidJSON(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	_, err := c.doGet("/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
@@ -172,7 +172,7 @@ func TestDoPost_Success(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	params := url.Values{"setting": {"value1"}}
 	resp, err := c.doPost("/api/settings/set", params)
 	if err != nil {
@@ -192,7 +192,7 @@ func TestDoPost_APIError(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	_, err := c.doPost("/api/settings/set", nil)
 	if err == nil {
 		t.Fatal("expected error")
@@ -205,7 +205,7 @@ func TestPing_Success(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "test-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	if err := c.Ping(); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -220,7 +220,7 @@ func TestPing_InvalidToken(t *testing.T) {
 	})
 	defer ts.Close()
 
-	c, _ := NewClient(ts.URL, "bad-token", false)
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "bad-token"})
 	if err := c.Ping(); err == nil {
 		t.Fatal("expected error for invalid token")
 	}

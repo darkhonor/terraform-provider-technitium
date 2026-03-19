@@ -37,6 +37,17 @@ func (e *APIError) IsInvalidToken() bool {
 	return e.Status == "invalid-token"
 }
 
+// ClientConfig holds all configuration options for NewClient.
+type ClientConfig struct {
+	BaseURL       string
+	Token         string
+	SkipTLSVerify bool   // default: false
+	CACertFile    string
+	CACertDir     string
+	TLSServerName string
+	TLSMinVersion string // "1.2" or "1.3", default: "1.3"
+}
+
 // Client is the Technitium DNS Server API client.
 type Client struct {
 	baseURL    string
@@ -45,25 +56,28 @@ type Client struct {
 }
 
 // NewClient creates a new Technitium API client.
-func NewClient(baseURL, token string, skipTLSVerify bool) (*Client, error) {
-	baseURL = strings.TrimRight(baseURL, "/")
-	if baseURL == "" {
+func NewClient(cfg ClientConfig) (*Client, error) {
+	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
+	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("server_url must not be empty")
 	}
-	if token == "" {
+	if cfg.Token == "" {
 		return nil, fmt.Errorf("api_token must not be empty")
+	}
+	if cfg.TLSMinVersion == "" {
+		cfg.TLSMinVersion = "1.3"
 	}
 
 	transport := &http.Transport{}
-	if skipTLSVerify {
+	if cfg.SkipTLSVerify {
 		transport.TLSClientConfig = &tls.Config{
 			InsecureSkipVerify: true, //nolint:gosec // User explicitly opted in via skip_tls_verify
 		}
 	}
 
 	return &Client{
-		baseURL: baseURL,
-		token:   token,
+		baseURL: cfg.BaseURL,
+		token:   cfg.Token,
 		httpClient: &http.Client{
 			Timeout:   30 * time.Second,
 			Transport: transport,

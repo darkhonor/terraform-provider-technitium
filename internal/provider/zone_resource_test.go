@@ -447,7 +447,7 @@ data "technitium_zone" "test" {
 // that need to bypass Terraform resource lifecycle.
 func testAccDirectClient(t *testing.T) *client.Client {
 	t.Helper()
-	c, err := client.NewClient("http://127.0.0.1:5380", testAccAPIToken(), false)
+	c, err := client.NewClient(client.ClientConfig{BaseURL: "http://127.0.0.1:5380", Token: testAccAPIToken()})
 	if err != nil {
 		t.Fatalf("failed to create direct API client: %s", err)
 	}
