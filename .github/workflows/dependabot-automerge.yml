@@ -3,14 +3,15 @@ name: Dependabot Auto-Merge
 on:
   pull_request:
 
-permissions:
-  pull-requests: write
-  contents: write
+permissions: read-all
 
 jobs:
   automerge:
     name: Auto-Merge Patch Updates
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: write
     if: github.actor == 'dependabot[bot]'
     steps:
       - name: Fetch Dependabot metadata
