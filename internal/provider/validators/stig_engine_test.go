@@ -471,3 +471,103 @@ func TestEngine_BothChecks_StatelessInValidate_StatefulInPlan(t *testing.T) {
 		t.Error("ValidatePlan should NOT call StatelessFn")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Default-allow bug regression (GitHub #8)
+// ---------------------------------------------------------------------------
+
+func TestEngine_NullAttribute_TriggersFinding_Strict(t *testing.T) {
+	engine := NewEngine(EngineConfig{
+		Enabled:     true,
+		Enforcement: "strict",
+		Categorization: Categorization{
+			Confidentiality: "high",
+			Integrity:       "high",
+			Availability:    "high",
+		},
+	})
+
+	engine.RegisterBindings(ResourceZone, ZoneBindings)
+
+	// Simulate a zone with dnssec block entirely omitted (null).
+	mock := NewMockAccessor(map[string]interface{}{
+		"dnssec.enabled":                 NullValue,
+		"dnssec.algorithm":              NullValue,
+		"dnssec.nx_proof":               NullValue,
+		"zone_transfer_allowed_networks": NullValue,
+		"notify_addresses":              NullValue,
+	})
+
+	var diags diag.Diagnostics
+	engine.ValidateConfig(context.Background(), ResourceZone, mock, &diags)
+
+	if !diags.HasError() {
+		t.Error("expected errors when security-critical attributes are null in strict mode")
+	}
+
+	// Count error diagnostics — should have findings for DNS-REQ-001,
+	// DNS-REQ-004, DNS-REQ-011, DNS-REQ-012, DNS-REQ-016.
+	// Using >= 3 threshold to allow for baseline scoping variations.
+	errorCount := 0
+	for _, d := range diags {
+		if d.Severity() == diag.SeverityError {
+			errorCount++
+		}
+	}
+	if errorCount < 3 {
+		t.Errorf("expected at least 3 error diagnostics for null zone attributes, got %d", errorCount)
+	}
+}
+
+func TestEngine_NullAttribute_TriggersWarning_WarnMode(t *testing.T) {
+	engine := NewEngine(EngineConfig{
+		Enabled:     true,
+		Enforcement: "warn",
+		Categorization: Categorization{
+			Confidentiality: "low",
+			Integrity:       "low",
+			Availability:    "low",
+		},
+	})
+
+	engine.RegisterBindings(ResourceZone, ZoneBindings)
+
+	mock := NewMockAccessor(map[string]interface{}{
+		"dnssec.enabled": NullValue,
+	})
+
+	var diags diag.Diagnostics
+	engine.ValidateConfig(context.Background(), ResourceZone, mock, &diags)
+
+	if diags.HasError() {
+		t.Error("warn mode should not produce errors")
+	}
+	if diags.WarningsCount() == 0 {
+		t.Error("expected at least one warning for null dnssec.enabled in warn mode")
+	}
+}
+
+func TestEngine_UnknownAttribute_StillDeferred(t *testing.T) {
+	engine := NewEngine(EngineConfig{
+		Enabled:     true,
+		Enforcement: "strict",
+		Categorization: Categorization{
+			Confidentiality: "high",
+			Integrity:       "high",
+			Availability:    "high",
+		},
+	})
+
+	engine.RegisterBindings(ResourceZone, ZoneBindings)
+
+	// Empty mock = all attributes are unknown (not in map = IsUnknown=true).
+	// This should NOT trigger findings — unknown means "computed at apply".
+	mock := NewMockAccessor(map[string]interface{}{})
+
+	var diags diag.Diagnostics
+	engine.ValidateConfig(context.Background(), ResourceZone, mock, &diags)
+
+	if diags.HasError() {
+		t.Error("unknown attributes should not trigger findings — validation is deferred")
+	}
+}
