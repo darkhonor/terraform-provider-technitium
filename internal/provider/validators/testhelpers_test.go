@@ -3,6 +3,8 @@
 
 package validators
 
+import "testing"
+
 // ---------------------------------------------------------------------------
 // MockAccessor — test double, no TF dependencies
 // ---------------------------------------------------------------------------
@@ -44,7 +46,61 @@ func (m *MockAccessor) GetStringList(key string) ([]string, bool) {
 	return sl, ok
 }
 
+// nullSentinel is a marker type to distinguish null from missing (unknown).
+type nullSentinel struct{}
+
+// NullValue is the sentinel stored in MockAccessor to represent a null attribute.
+var NullValue = nullSentinel{}
+
+func (m *MockAccessor) IsNull(key string) bool {
+	v, ok := m.attrs[key]
+	if !ok {
+		return false // missing key = unknown, not null
+	}
+	_, isNull := v.(nullSentinel)
+	return isNull
+}
+
+func (m *MockAccessor) IsUnknown(key string) bool {
+	_, ok := m.attrs[key]
+	return !ok // missing key = unknown
+}
+
 // Interface compliance assertions.
 var _ ConfigAccessor = &MockAccessor{}
 var _ PlanAccessor = &MockAccessor{}
 var _ StateAccessor = &MockAccessor{}
+
+func TestMockAccessor_IsNull_ReturnsTrueForNullSentinel(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"dnssec.enabled": NullValue,
+	})
+	if !m.IsNull("dnssec.enabled") {
+		t.Error("expected IsNull=true for NullValue sentinel")
+	}
+	if m.IsUnknown("dnssec.enabled") {
+		t.Error("expected IsUnknown=false for NullValue sentinel")
+	}
+}
+
+func TestMockAccessor_IsUnknown_ReturnsTrueForMissingKey(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{})
+	if m.IsNull("dnssec.enabled") {
+		t.Error("expected IsNull=false for missing key")
+	}
+	if !m.IsUnknown("dnssec.enabled") {
+		t.Error("expected IsUnknown=true for missing key")
+	}
+}
+
+func TestMockAccessor_IsNull_FalseForPresentValue(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{
+		"dnssec.enabled": true,
+	})
+	if m.IsNull("dnssec.enabled") {
+		t.Error("expected IsNull=false for present value")
+	}
+	if m.IsUnknown("dnssec.enabled") {
+		t.Error("expected IsUnknown=false for present value")
+	}
+}

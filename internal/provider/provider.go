@@ -623,5 +623,15 @@ func (a *providerConfigAccessor) GetStringList(path string) ([]string, bool) {
 	return nil, false
 }
 
+// IsNull always returns false because providerConfigAccessor holds resolved values.
+func (a *providerConfigAccessor) IsNull(path string) bool {
+	return false
+}
+
+// IsUnknown always returns false because providerConfigAccessor holds resolved values.
+func (a *providerConfigAccessor) IsUnknown(path string) bool {
+	return false
+}
+
 // Interface compliance assertion.
 var _ validators.ConfigAccessor = &providerConfigAccessor{}

@@ -5,10 +5,12 @@ package validators
 
 import (
 	"context"
+	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/tfpath"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 // ConfigAccessor provides read access to Terraform configuration values.
@@ -16,6 +18,15 @@ type ConfigAccessor interface {
 	GetString(path string) (string, bool)
 	GetBool(path string) (bool, bool)
 	GetStringList(path string) ([]string, bool)
+	// IsNull returns true when the attribute exists in the schema but the
+	// user omitted it (or explicitly set it to null). For security-critical
+	// attributes, null means "not configured" and should be treated as a
+	// finding by validators.
+	IsNull(path string) bool
+	// IsUnknown returns true when the attribute value will only be resolved
+	// at apply time (e.g. computed values). Validators should skip checks
+	// for unknown values since they cannot be evaluated yet.
+	IsUnknown(path string) bool
 }
 
 // PlanAccessor provides read access to Terraform plan values.
@@ -26,6 +37,19 @@ type PlanAccessor interface {
 // StateAccessor provides read access to Terraform state values.
 type StateAccessor interface {
 	ConfigAccessor
+}
+
+// ---------------------------------------------------------------------------
+// toTftypesPath converts a dot-separated path to a tftypes.AttributePath.
+// ---------------------------------------------------------------------------
+
+func toTftypesPath(dotPath string) *tftypes.AttributePath {
+	parts := strings.Split(dotPath, ".")
+	steps := make([]tftypes.AttributePathStep, len(parts))
+	for i, p := range parts {
+		steps[i] = tftypes.AttributeName(p)
+	}
+	return tftypes.NewAttributePathWithSteps(steps)
 }
 
 // ---------------------------------------------------------------------------
@@ -74,6 +98,40 @@ func (a *TFConfigAdapter) GetStringList(dotPath string) ([]string, bool) {
 	return result, true
 }
 
+func (a *TFConfigAdapter) IsNull(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.Config.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		// Path traversal failed — possibly because a parent block is null.
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" {
+			return a.IsNull(parentDotPath)
+		}
+		return false
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return false
+	}
+	return v.IsNull()
+}
+
+func (a *TFConfigAdapter) IsUnknown(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.Config.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		// Path traversal failed — if the parent is null, this is NOT unknown.
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" && a.IsNull(parentDotPath) {
+			return false
+		}
+		return true
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return true
+	}
+	return !v.IsKnown()
+}
+
 // ---------------------------------------------------------------------------
 // TFPlanAdapter
 // ---------------------------------------------------------------------------
@@ -116,6 +174,38 @@ func (a *TFPlanAdapter) GetStringList(dotPath string) ([]string, bool) {
 	return result, true
 }
 
+func (a *TFPlanAdapter) IsNull(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.Plan.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" {
+			return a.IsNull(parentDotPath)
+		}
+		return false
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return false
+	}
+	return v.IsNull()
+}
+
+func (a *TFPlanAdapter) IsUnknown(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.Plan.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" && a.IsNull(parentDotPath) {
+			return false
+		}
+		return true
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return true
+	}
+	return !v.IsKnown()
+}
+
 // ---------------------------------------------------------------------------
 // TFStateAdapter
 // ---------------------------------------------------------------------------
@@ -156,6 +246,38 @@ func (a *TFStateAdapter) GetStringList(dotPath string) ([]string, bool) {
 		}
 	}
 	return result, true
+}
+
+func (a *TFStateAdapter) IsNull(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.State.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" {
+			return a.IsNull(parentDotPath)
+		}
+		return false
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return false
+	}
+	return v.IsNull()
+}
+
+func (a *TFStateAdapter) IsUnknown(dotPath string) bool {
+	rawVal, remaining, err := tftypes.WalkAttributePath(a.State.Raw, toTftypesPath(dotPath))
+	if err != nil || len(remaining.Steps()) > 0 {
+		parentDotPath := tfpath.Parent(dotPath)
+		if parentDotPath != "" && a.IsNull(parentDotPath) {
+			return false
+		}
+		return true
+	}
+	v, ok := rawVal.(tftypes.Value)
+	if !ok {
+		return true
+	}
+	return !v.IsKnown()
 }
 
 // Interface compliance assertions.

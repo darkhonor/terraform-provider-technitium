@@ -11,6 +11,16 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 )
 
+// Parent returns the parent dot-path, or "" if there is no parent.
+// Example: Parent("dnssec.enabled") returns "dnssec".
+func Parent(dotPath string) string {
+	idx := strings.LastIndex(dotPath, ".")
+	if idx < 0 {
+		return ""
+	}
+	return dotPath[:idx]
+}
+
 // Parse converts a dot-separated string (e.g. "dnssec.enabled") into a
 // Terraform framework path.Path.
 func Parse(dotPath string) path.Path {
