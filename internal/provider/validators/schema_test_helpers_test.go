@@ -4,6 +4,7 @@
 package validators
 
 import (
+	"context"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -25,7 +26,7 @@ import (
 func BuildTestConfig(t *testing.T, s schema.Schema, attrs map[string]interface{}) tfsdk.Config {
 	t.Helper()
 
-	schemaType := s.Type().TerraformType(nil)
+	schemaType := s.Type().TerraformType(context.Background())
 	raw := buildValue(t, schemaType, attrs)
 
 	return tfsdk.Config{
