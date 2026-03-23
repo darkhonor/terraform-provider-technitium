@@ -352,7 +352,7 @@ func validateDNSSECEnabled(ctx context.Context, config ConfigAccessor) bool {
 func validateDNSSECValidation(ctx context.Context, config ConfigAccessor) bool {
 	enabled, ok := config.GetBool("dnssec_validation")
 	if !ok {
-		return true
+		return config.IsUnknown("dnssec_validation")
 	}
 	return enabled
 }
@@ -443,7 +443,7 @@ func validateRecursionACL(ctx context.Context, config ConfigAccessor) bool {
 func validateLogQueriesEnabled(ctx context.Context, config ConfigAccessor) bool {
 	enabled, ok := config.GetBool("log_queries")
 	if !ok {
-		return true
+		return config.IsUnknown("log_queries")
 	}
 	return enabled
 }
@@ -452,7 +452,7 @@ func validateLogQueriesEnabled(ctx context.Context, config ConfigAccessor) bool 
 func validateLoggingNotNull(ctx context.Context, config ConfigAccessor) bool {
 	loggingType, ok := config.GetString("logging_type")
 	if !ok {
-		return true
+		return config.IsUnknown("logging_type")
 	}
 	return loggingType != "None"
 }
@@ -462,7 +462,7 @@ func validateLoggingNotNull(ctx context.Context, config ConfigAccessor) bool {
 func validateLoggingToFile(ctx context.Context, config ConfigAccessor) bool {
 	loggingType, ok := config.GetString("logging_type")
 	if !ok {
-		return true
+		return config.IsUnknown("logging_type")
 	}
 	return strings.Contains(loggingType, "File")
 }
@@ -488,7 +488,7 @@ func validateForwarders(ctx context.Context, config ConfigAccessor) bool {
 func validateQnameMinimization(ctx context.Context, config ConfigAccessor) bool {
 	enabled, ok := config.GetBool("qname_minimization")
 	if !ok {
-		return true
+		return config.IsUnknown("qname_minimization")
 	}
 	return enabled
 }
@@ -498,7 +498,7 @@ func validateQnameMinimization(ctx context.Context, config ConfigAccessor) bool 
 func validateRandomizeName(ctx context.Context, config ConfigAccessor) bool {
 	enabled, ok := config.GetBool("randomize_name")
 	if !ok {
-		return true
+		return config.IsUnknown("randomize_name")
 	}
 	return enabled
 }

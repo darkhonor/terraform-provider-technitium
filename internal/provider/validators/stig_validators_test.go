@@ -538,3 +538,49 @@ func TestValidator_DNSREQ016_Zone_NotifyNull_Noncompliant(t *testing.T) {
 		t.Error("expected noncompliant when notify_addresses is null (omitted)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Server settings: null-means-noncompliant tests (GitHub #8)
+// ---------------------------------------------------------------------------
+
+func TestValidator_DNSREQ001_Server_ValidationNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"dnssec_validation": NullValue})
+	if validateDNSSECValidation(context.Background(), m) {
+		t.Error("expected noncompliant when dnssec_validation is null (omitted)")
+	}
+}
+
+func TestValidator_DNSREQ007_LogQueriesNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"log_queries": NullValue})
+	if validateLogQueriesEnabled(context.Background(), m) {
+		t.Error("expected noncompliant when log_queries is null (omitted)")
+	}
+}
+
+func TestValidator_DNSREQ008_LoggingTypeNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"logging_type": NullValue})
+	if validateLoggingNotNull(context.Background(), m) {
+		t.Error("expected noncompliant when logging_type is null (omitted)")
+	}
+}
+
+func TestValidator_DNSREQ009_LoggingTypeNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"logging_type": NullValue})
+	if validateLoggingToFile(context.Background(), m) {
+		t.Error("expected noncompliant when logging_type is null (omitted) for file logging check")
+	}
+}
+
+func TestValidator_DNSREQ014_QnameNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"qname_minimization": NullValue})
+	if validateQnameMinimization(context.Background(), m) {
+		t.Error("expected noncompliant when qname_minimization is null (omitted)")
+	}
+}
+
+func TestValidator_DNSREQ015_RandomizeNull_Noncompliant(t *testing.T) {
+	m := NewMockAccessor(map[string]interface{}{"randomize_name": NullValue})
+	if validateRandomizeName(context.Background(), m) {
+		t.Error("expected noncompliant when randomize_name is null (omitted)")
+	}
+}
