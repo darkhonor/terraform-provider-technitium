@@ -329,8 +329,10 @@ func AllBindings() []ValidatorBinding {
 // ---------------------------------------------------------------------------
 // Validator functions — unexported, pure, side-effect free.
 // Convention: return true = compliant, false = finding.
-// If the attribute is null/unknown (ok == false), return true — we cannot
-// validate what has not been configured yet.
+// If the attribute is unknown (ok == false && IsUnknown), return true —
+// we cannot validate computed values until apply time.
+// If the attribute is null (ok == false && !IsUnknown), return false —
+// omitted security-critical attributes are findings, not passes.
 // ---------------------------------------------------------------------------
 
 // validateDNSSECEnabled checks that DNSSEC is enabled on the zone.
@@ -338,7 +340,9 @@ func AllBindings() []ValidatorBinding {
 func validateDNSSECEnabled(ctx context.Context, config ConfigAccessor) bool {
 	enabled, ok := config.GetBool("dnssec.enabled")
 	if !ok {
-		return true
+		// Null = user omitted DNSSEC entirely — that IS the finding.
+		// Unknown = computed at apply time — cannot validate yet.
+		return config.IsUnknown("dnssec.enabled")
 	}
 	return enabled
 }
@@ -370,7 +374,7 @@ func validateZoneTSIGKeyNames(_ context.Context, plan PlanAccessor, _ StateAcces
 func validateZoneTransferNetworks(ctx context.Context, config ConfigAccessor) bool {
 	networks, ok := config.GetStringList("zone_transfer_allowed_networks")
 	if !ok {
-		return true
+		return config.IsUnknown("zone_transfer_allowed_networks")
 	}
 	return len(networks) > 0
 }
@@ -380,7 +384,7 @@ func validateZoneTransferNetworks(ctx context.Context, config ConfigAccessor) bo
 func validateNSEC3Required(ctx context.Context, config ConfigAccessor) bool {
 	nxProof, ok := config.GetString("dnssec.nx_proof")
 	if !ok {
-		return true
+		return config.IsUnknown("dnssec.nx_proof")
 	}
 	return nxProof == "NSEC3"
 }
@@ -390,7 +394,7 @@ func validateNSEC3Required(ctx context.Context, config ConfigAccessor) bool {
 func validateFIPSCrypto(ctx context.Context, config ConfigAccessor) bool {
 	algo, ok := config.GetString("dnssec.algorithm")
 	if !ok {
-		return true
+		return config.IsUnknown("dnssec.algorithm")
 	}
 	return algo == "ECDSA"
 }
@@ -400,7 +404,7 @@ func validateFIPSCrypto(ctx context.Context, config ConfigAccessor) bool {
 func validateZoneNotifyAddresses(ctx context.Context, config ConfigAccessor) bool {
 	addrs, ok := config.GetStringList("notify_addresses")
 	if !ok {
-		return true
+		return config.IsUnknown("notify_addresses")
 	}
 	return len(addrs) > 0
 }
