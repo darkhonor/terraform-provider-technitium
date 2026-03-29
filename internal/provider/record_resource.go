@@ -6,7 +6,6 @@ package provider
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/inputvalidation"
@@ -66,11 +65,8 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 		Description: "Manages a DNS record in a Technitium DNS zone.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
-				Description: "Record identifier (zone/name/type composite key).",
+				Description: "Record identifier (zone::name::type::value composite key). Uniquely identifies an individual DNS record.",
 				Computed:    true,
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.UseStateForUnknown(),
-				},
 			},
 			"zone": schema.StringAttribute{
 				Description: "Parent zone name.",
@@ -197,8 +193,7 @@ func (r *RecordResource) Create(ctx context.Context, req resource.CreateRequest,
 		return
 	}
 
-	plan.ID = types.StringValue(fmt.Sprintf("%s/%s/%s",
-		plan.Zone.ValueString(), plan.Name.ValueString(), plan.Type.ValueString()))
+	plan.ID = types.StringValue(buildRecordID(&plan))
 	plan.LastModified = types.StringValue(record.LastModified)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -217,11 +212,11 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	// Find matching record by type
+	// Find matching record by type AND value (fixes #6: ID collision)
 	found := false
 	recordType := state.Type.ValueString()
 	for _, rec := range records {
-		if rec.Type == recordType {
+		if recordMatchesState(rec, &state) {
 			state.TTL = types.Int64Value(int64(rec.TTL))
 			state.Value = types.StringValue(client.RecordValueFromRData(recordType, rec.RData))
 			state.LastModified = types.StringValue(rec.LastModified)
@@ -289,13 +284,14 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 		return
 	}
 	for _, rec := range records {
-		if rec.Type == plan.Type.ValueString() {
+		if recordMatchesState(rec, &plan) {
 			plan.LastModified = types.StringValue(rec.LastModified)
 			break
 		}
 	}
 
-	plan.ID = state.ID
+	// Rebuild ID — value may have changed
+	plan.ID = types.StringValue(buildRecordID(&plan))
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
@@ -319,19 +315,45 @@ func (r *RecordResource) Delete(_ context.Context, req resource.DeleteRequest, r
 }
 
 func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Import ID format: "zone/name/type"
-	parts := strings.SplitN(req.ID, "/", 3)
-	if len(parts) != 3 {
+	// Import ID format: "zone::name::type::value"
+	zone, name, recordType, valueSegment, err := parseRecordID(req.ID)
+	if err != nil {
 		resp.Diagnostics.AddError("Invalid import ID",
-			"Import ID must be in format: zone/fqdn/type (e.g., example.com/www.example.com/A)")
+			"Import ID must be in format: zone::name::type::value "+
+				"(e.g., example.com::www.example.com::A::192.0.2.1). "+
+				"For MX: zone::name::MX::exchange:priority. "+
+				"For SRV: zone::name::SRV::target:priority:weight:port. "+
+				"For CAA: zone::name::CAA::value:flags:tag.")
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("zone"), parts[0])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), parts[1])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), parts[2])...)
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("overwrite"), true)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("zone"), zone)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("name"), name)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("type"), recordType)...)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("overwrite"), false)...)
+
+	// Parse value segment for type-specific fields
+	value, priority, weight, port, caaFlags, caaTag, parseErr := parseImportValueSegment(recordType, valueSegment)
+	if parseErr != nil {
+		resp.Diagnostics.AddError("Invalid import value segment", parseErr.Error())
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("value"), value)...)
+
+	if recordType == "MX" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), priority)...)
+	}
+	if recordType == "SRV" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("priority"), priority)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("weight"), weight)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("port"), port)...)
+	}
+	if recordType == "CAA" {
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_flags"), caaFlags)...)
+		resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("caa_tag"), caaTag)...)
+	}
 }
 
 // buildAddParams creates type-specific API parameters for record creation.
