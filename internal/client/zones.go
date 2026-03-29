@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -86,7 +87,7 @@ type DSInfo struct {
 }
 
 // ZoneCreate creates a new authoritative zone.
-func (c *Client) ZoneCreate(name, zoneType string, useSoaSerialDateScheme bool) (string, error) {
+func (c *Client) ZoneCreate(ctx context.Context, name, zoneType string, useSoaSerialDateScheme bool) (string, error) {
 	params := url.Values{
 		"zone": {name},
 		"type": {zoneType},
@@ -95,7 +96,7 @@ func (c *Client) ZoneCreate(name, zoneType string, useSoaSerialDateScheme bool) 
 		params.Set("useSoaSerialDateScheme", "true")
 	}
 
-	resp, err := c.doGet("/api/zones/create", params)
+	resp, err := c.doGet(ctx, "/api/zones/create", params)
 	if err != nil {
 		return "", fmt.Errorf("creating zone %q: %w", name, err)
 	}
@@ -111,11 +112,11 @@ func (c *Client) ZoneCreate(name, zoneType string, useSoaSerialDateScheme bool) 
 }
 
 // ZoneDelete deletes an authoritative zone.
-func (c *Client) ZoneDelete(name string) error {
+func (c *Client) ZoneDelete(ctx context.Context, name string) error {
 	params := url.Values{
 		"zone": {name},
 	}
-	_, err := c.doGet("/api/zones/delete", params)
+	_, err := c.doGet(ctx, "/api/zones/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting zone %q: %w", name, err)
 	}
@@ -123,8 +124,8 @@ func (c *Client) ZoneDelete(name string) error {
 }
 
 // ZoneList returns all authoritative zones.
-func (c *Client) ZoneList() ([]ZoneListItem, error) {
-	resp, err := c.doGet("/api/zones/list", nil)
+func (c *Client) ZoneList(ctx context.Context) ([]ZoneListItem, error) {
+	resp, err := c.doGet(ctx, "/api/zones/list", nil)
 	if err != nil {
 		return nil, fmt.Errorf("listing zones: %w", err)
 	}
@@ -140,11 +141,11 @@ func (c *Client) ZoneList() ([]ZoneListItem, error) {
 }
 
 // ZoneOptionsGet returns the zone-specific options.
-func (c *Client) ZoneOptionsGet(name string) (*Zone, error) {
+func (c *Client) ZoneOptionsGet(ctx context.Context, name string) (*Zone, error) {
 	params := url.Values{
 		"zone": {name},
 	}
-	resp, err := c.doGet("/api/zones/options/get", params)
+	resp, err := c.doGet(ctx, "/api/zones/options/get", params)
 	if err != nil {
 		return nil, fmt.Errorf("getting zone options for %q: %w", name, err)
 	}
@@ -158,7 +159,7 @@ func (c *Client) ZoneOptionsGet(name string) (*Zone, error) {
 }
 
 // ZoneOptionsSet updates zone-specific options.
-func (c *Client) ZoneOptionsSet(name string, opts map[string]string) error {
+func (c *Client) ZoneOptionsSet(ctx context.Context, name string, opts map[string]string) error {
 	params := url.Values{
 		"zone": {name},
 	}
@@ -166,7 +167,7 @@ func (c *Client) ZoneOptionsSet(name string, opts map[string]string) error {
 		params.Set(k, v)
 	}
 
-	_, err := c.doGet("/api/zones/options/set", params)
+	_, err := c.doGet(ctx, "/api/zones/options/set", params)
 	if err != nil {
 		return fmt.Errorf("setting zone options for %q: %w", name, err)
 	}
@@ -177,7 +178,7 @@ func (c *Client) ZoneOptionsSet(name string, opts map[string]string) error {
 // algorithm: RSA, ECDSA, EDDSA
 // curve: P256, P384 (ECDSA) or ED25519, ED448 (EDDSA)
 // nxProof: NSEC or NSEC3
-func (c *Client) ZoneDNSSECSign(name, algorithm, curve, nxProof string) error {
+func (c *Client) ZoneDNSSECSign(ctx context.Context, name, algorithm, curve, nxProof string) error {
 	params := url.Values{
 		"zone":      {name},
 		"algorithm": {algorithm},
@@ -194,7 +195,7 @@ func (c *Client) ZoneDNSSECSign(name, algorithm, curve, nxProof string) error {
 		params.Set("saltLength", "0")
 	}
 
-	_, err := c.doGet("/api/zones/dnssec/sign", params)
+	_, err := c.doGet(ctx, "/api/zones/dnssec/sign", params)
 	if err != nil {
 		return fmt.Errorf("signing zone %q with DNSSEC: %w", name, err)
 	}
@@ -202,11 +203,11 @@ func (c *Client) ZoneDNSSECSign(name, algorithm, curve, nxProof string) error {
 }
 
 // ZoneDNSSECUnsign removes DNSSEC from a zone.
-func (c *Client) ZoneDNSSECUnsign(name string) error {
+func (c *Client) ZoneDNSSECUnsign(ctx context.Context, name string) error {
 	params := url.Values{
 		"zone": {name},
 	}
-	_, err := c.doGet("/api/zones/dnssec/unsign", params)
+	_, err := c.doGet(ctx, "/api/zones/dnssec/unsign", params)
 	if err != nil {
 		return fmt.Errorf("unsigning zone %q: %w", name, err)
 	}
@@ -214,11 +215,11 @@ func (c *Client) ZoneDNSSECUnsign(name string) error {
 }
 
 // ZoneDNSSECPropertiesGet returns DNSSEC properties for a zone.
-func (c *Client) ZoneDNSSECPropertiesGet(name string) (*DNSSECProperties, error) {
+func (c *Client) ZoneDNSSECPropertiesGet(ctx context.Context, name string) (*DNSSECProperties, error) {
 	params := url.Values{
 		"zone": {name},
 	}
-	resp, err := c.doGet("/api/zones/dnssec/properties/get", params)
+	resp, err := c.doGet(ctx, "/api/zones/dnssec/properties/get", params)
 	if err != nil {
 		return nil, fmt.Errorf("getting DNSSEC properties for %q: %w", name, err)
 	}
@@ -232,11 +233,11 @@ func (c *Client) ZoneDNSSECPropertiesGet(name string) (*DNSSECProperties, error)
 }
 
 // ZoneDNSSECViewDS returns DS records for a signed zone.
-func (c *Client) ZoneDNSSECViewDS(name string) (*DSInfo, error) {
+func (c *Client) ZoneDNSSECViewDS(ctx context.Context, name string) (*DSInfo, error) {
 	params := url.Values{
 		"zone": {name},
 	}
-	resp, err := c.doGet("/api/zones/dnssec/viewDS", params)
+	resp, err := c.doGet(ctx, "/api/zones/dnssec/viewDS", params)
 	if err != nil {
 		return nil, fmt.Errorf("getting DS records for %q: %w", name, err)
 	}
@@ -250,8 +251,8 @@ func (c *Client) ZoneDNSSECViewDS(name string) (*DSInfo, error) {
 }
 
 // ZoneExists checks if a zone exists by name.
-func (c *Client) ZoneExists(name string) (bool, error) {
-	zones, err := c.ZoneList()
+func (c *Client) ZoneExists(ctx context.Context, name string) (bool, error) {
+	zones, err := c.ZoneList(ctx)
 	if err != nil {
 		return false, err
 	}

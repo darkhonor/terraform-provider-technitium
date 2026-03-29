@@ -118,7 +118,7 @@ func (d *ZoneDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	zoneName := config.Name.ValueString()
 
 	// Get zone options
-	zone, err := d.client.ZoneOptionsGet(zoneName)
+	zone, err := d.client.ZoneOptionsGet(ctx, zoneName)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading zone",
 			fmt.Sprintf("Could not read zone %q: %s", zoneName, err.Error()))
@@ -144,7 +144,7 @@ func (d *ZoneDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	config.NotifyNameServers = notifyNS
 
 	// Get SOA serial from zone list
-	zones, err := d.client.ZoneList()
+	zones, err := d.client.ZoneList(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Error listing zones", err.Error())
 		return

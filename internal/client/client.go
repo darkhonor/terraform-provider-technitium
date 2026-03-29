@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -171,14 +172,18 @@ func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 
 // doGet performs a GET request to the Technitium API and returns the parsed response.
 // Most Technitium API endpoints use GET with query parameters, including mutations.
-func (c *Client) doGet(path string, params url.Values) (*APIResponse, error) {
+func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*APIResponse, error) {
 	if params == nil {
 		params = url.Values{}
 	}
 	params.Set("token", c.token)
 
 	reqURL := fmt.Sprintf("%s%s?%s", c.baseURL, path, params.Encode())
-	resp, err := c.httpClient.Get(reqURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
@@ -188,14 +193,20 @@ func (c *Client) doGet(path string, params url.Values) (*APIResponse, error) {
 }
 
 // doPost performs a POST request with form-encoded body (used by /api/settings/set).
-func (c *Client) doPost(path string, params url.Values) (*APIResponse, error) {
+func (c *Client) doPost(ctx context.Context, path string, params url.Values) (*APIResponse, error) {
 	if params == nil {
 		params = url.Values{}
 	}
 	params.Set("token", c.token)
 
 	reqURL := fmt.Sprintf("%s%s", c.baseURL, path)
-	resp, err := c.httpClient.PostForm(reqURL, params)
+	body := strings.NewReader(params.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, body)
+	if err != nil {
+		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
@@ -234,11 +245,11 @@ func (c *Client) parseResponse(resp *http.Response) (*APIResponse, error) {
 // Uses /api/user/session/get which exists across all Technitium versions and
 // validates the token without side effects. Falls back to /api/settings/get
 // if the session endpoint is unavailable.
-func (c *Client) Ping() error {
-	_, err := c.doGet("/api/user/session/get", nil)
+func (c *Client) Ping(ctx context.Context) error {
+	_, err := c.doGet(ctx, "/api/user/session/get", nil)
 	if err != nil {
 		// Fallback: try settings endpoint (always exists, requires valid token)
-		_, err = c.doGet("/api/settings/get", nil)
+		_, err = c.doGet(ctx, "/api/settings/get", nil)
 	}
 	return err
 }

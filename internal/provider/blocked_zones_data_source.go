@@ -56,7 +56,7 @@ func (d *BlockedZonesDataSource) Configure(_ context.Context, req datasource.Con
 }
 
 func (d *BlockedZonesDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	domains, err := zoneList(d.client, FilterZoneBlocked)
+	domains, err := zoneList(ctx, d.client, FilterZoneBlocked)
 	if err != nil {
 		resp.Diagnostics.AddError("Error listing blocked zones", err.Error())
 		return

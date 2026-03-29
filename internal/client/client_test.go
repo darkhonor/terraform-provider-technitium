@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -89,7 +90,7 @@ func TestDoGet_Success(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	resp, err := c.doGet("/api/zones/list", nil)
+	resp, err := c.doGet(context.Background(), "/api/zones/list", nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +111,7 @@ func TestDoGet_APIError(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	_, err := c.doGet("/api/zones/options/get", nil)
+	_, err := c.doGet(context.Background(), "/api/zones/options/get", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -135,7 +136,7 @@ func TestDoGet_InvalidToken(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "bad-token"})
-	_, err := c.doGet("/api/zones/list", nil)
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -158,7 +159,7 @@ func TestDoGet_HTTPError(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	_, err := c.doGet("/api/zones/list", nil)
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error for HTTP 500")
 	}
@@ -173,7 +174,7 @@ func TestDoGet_InvalidJSON(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	_, err := c.doGet("/api/zones/list", nil)
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid JSON")
 	}
@@ -198,7 +199,7 @@ func TestDoPost_Success(t *testing.T) {
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
 	params := url.Values{"setting": {"value1"}}
-	resp, err := c.doPost("/api/settings/set", params)
+	resp, err := c.doPost(context.Background(), "/api/settings/set", params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -219,7 +220,7 @@ func TestDoPost_APIError(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	_, err := c.doPost("/api/settings/set", nil)
+	_, err := c.doPost(context.Background(), "/api/settings/set", nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -234,7 +235,7 @@ func TestPing_Success(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
-	if err := c.Ping(); err != nil {
+	if err := c.Ping(context.Background()); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -251,7 +252,7 @@ func TestPing_InvalidToken(t *testing.T) {
 	defer ts.Close()
 
 	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "bad-token"})
-	if err := c.Ping(); err == nil {
+	if err := c.Ping(context.Background()); err == nil {
 		t.Fatal("expected error for invalid token")
 	}
 }

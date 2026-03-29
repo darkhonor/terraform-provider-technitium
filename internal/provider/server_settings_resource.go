@@ -302,7 +302,7 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 	// Apply settings
 	params := r.buildParams(ctx, &plan)
 	if len(params) > 0 {
-		if err := r.client.SettingsSet(params); err != nil {
+		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error setting server settings", err.Error())
 			return
 		}
@@ -341,7 +341,7 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 
 	params := r.buildParams(ctx, &plan)
 	if len(params) > 0 {
-		if err := r.client.SettingsSet(params); err != nil {
+		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error updating server settings", err.Error())
 			return
 		}
@@ -401,7 +401,7 @@ func (r *ServerSettingsResource) buildParams(ctx context.Context, model *ServerS
 
 // readState reads current settings from the API into the model.
 func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSettingsResourceModel) error {
-	settings, err := r.client.SettingsGet()
+	settings, err := r.client.SettingsGet(ctx)
 	if err != nil {
 		return err
 	}

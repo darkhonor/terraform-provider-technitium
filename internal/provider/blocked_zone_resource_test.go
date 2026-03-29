@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -42,11 +43,11 @@ func TestAccBlockedZoneResource_checkAndSetAdopt(t *testing.T) {
 	c := testAccDirectClient(t)
 
 	// Clean up any stale entry then pre-create via direct API.
-	_ = c.BlockedZoneDelete(domain)
-	if err := c.BlockedZoneAdd(domain); err != nil {
+	_ = c.BlockedZoneDelete(context.Background(), domain)
+	if err := c.BlockedZoneAdd(context.Background(), domain); err != nil {
 		t.Fatalf("failed to pre-create blocked zone %q: %s", domain, err)
 	}
-	t.Cleanup(func() { _ = c.BlockedZoneDelete(domain) })
+	t.Cleanup(func() { _ = c.BlockedZoneDelete(context.Background(), domain) })
 
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

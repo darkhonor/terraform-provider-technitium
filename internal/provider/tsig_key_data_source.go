@@ -66,7 +66,7 @@ func (d *TSIGKeyDataSource) Read(ctx context.Context, req datasource.ReadRequest
 		return
 	}
 
-	key, err := d.client.TSIGKeyGet(config.KeyName.ValueString())
+	key, err := d.client.TSIGKeyGet(ctx, config.KeyName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading TSIG key",
 			fmt.Sprintf("Could not find TSIG key %q: %s", config.KeyName.ValueString(), err.Error()))

@@ -4,9 +4,11 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/url"
 	"strings"
 )
@@ -23,9 +25,13 @@ type filteredZoneListResponse struct {
 // (e.g. /api/blocked/export or /api/allowed/export) and returns one domain
 // per line. It bypasses doGet because the export endpoint returns plain text,
 // not JSON.
-func exportFilteredZones(c *Client, path string) ([]string, error) {
+func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string, error) {
 	reqURL := fmt.Sprintf("%s%s?token=%s", c.baseURL, path, url.QueryEscape(c.token))
-	resp, err := c.httpClient.Get(reqURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+	}
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
@@ -53,10 +59,10 @@ func exportFilteredZones(c *Client, path string) ([]string, error) {
 }
 
 // BlockedZoneAdd adds a domain to the blocked zone list. Idempotent.
-func (c *Client) BlockedZoneAdd(domain string) error {
+func (c *Client) BlockedZoneAdd(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet("/api/blocked/add", params)
+	_, err := c.doGet(ctx, "/api/blocked/add", params)
 	if err != nil {
 		return fmt.Errorf("adding blocked zone %q: %w", domain, err)
 	}
@@ -64,10 +70,10 @@ func (c *Client) BlockedZoneAdd(domain string) error {
 }
 
 // BlockedZoneDelete removes a domain from the blocked zone list. Idempotent.
-func (c *Client) BlockedZoneDelete(domain string) error {
+func (c *Client) BlockedZoneDelete(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet("/api/blocked/delete", params)
+	_, err := c.doGet(ctx, "/api/blocked/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting blocked zone %q: %w", domain, err)
 	}
@@ -75,10 +81,10 @@ func (c *Client) BlockedZoneDelete(domain string) error {
 }
 
 // BlockedZoneExists returns true if the domain exists in the blocked zone list.
-func (c *Client) BlockedZoneExists(domain string) (bool, error) {
+func (c *Client) BlockedZoneExists(ctx context.Context, domain string) (bool, error) {
 	params := url.Values{}
 	params.Set("domain", domain)
-	apiResp, err := c.doGet("/api/blocked/list", params)
+	apiResp, err := c.doGet(ctx, "/api/blocked/list", params)
 	if err != nil {
 		return false, fmt.Errorf("checking blocked zone %q: %w", domain, err)
 	}
@@ -92,8 +98,8 @@ func (c *Client) BlockedZoneExists(domain string) (bool, error) {
 }
 
 // BlockedZoneList returns all domains in the blocked zone list.
-func (c *Client) BlockedZoneList() ([]string, error) {
-	domains, err := exportFilteredZones(c, "/api/blocked/export")
+func (c *Client) BlockedZoneList(ctx context.Context) ([]string, error) {
+	domains, err := exportFilteredZones(ctx, c, "/api/blocked/export")
 	if err != nil {
 		return nil, fmt.Errorf("listing blocked zones: %w", err)
 	}
@@ -101,10 +107,10 @@ func (c *Client) BlockedZoneList() ([]string, error) {
 }
 
 // BlockedZoneImport adds multiple domains to the blocked zone list in one call.
-func (c *Client) BlockedZoneImport(domains []string) error {
+func (c *Client) BlockedZoneImport(ctx context.Context, domains []string) error {
 	params := url.Values{}
 	params.Set("blockedZones", strings.Join(domains, ","))
-	_, err := c.doGet("/api/blocked/import", params)
+	_, err := c.doGet(ctx, "/api/blocked/import", params)
 	if err != nil {
 		return fmt.Errorf("importing blocked zones: %w", err)
 	}
@@ -112,8 +118,8 @@ func (c *Client) BlockedZoneImport(domains []string) error {
 }
 
 // BlockedZoneFlush removes all domains from the blocked zone list.
-func (c *Client) BlockedZoneFlush() error {
-	_, err := c.doGet("/api/blocked/flush", nil)
+func (c *Client) BlockedZoneFlush(ctx context.Context) error {
+	_, err := c.doGet(ctx, "/api/blocked/flush", nil)
 	if err != nil {
 		return fmt.Errorf("flushing blocked zones: %w", err)
 	}

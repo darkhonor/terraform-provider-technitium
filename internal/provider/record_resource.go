@@ -180,7 +180,7 @@ func (r *RecordResource) Create(ctx context.Context, req resource.CreateRequest,
 	}
 
 	params := r.buildAddParams(&plan)
-	record, err := r.client.RecordAdd(
+	record, err := r.client.RecordAdd(ctx,
 		plan.Name.ValueString(),
 		plan.Zone.ValueString(),
 		plan.Type.ValueString(),
@@ -206,7 +206,7 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
-	records, err := r.client.RecordGet(state.Name.ValueString(), state.Zone.ValueString())
+	records, err := r.client.RecordGet(ctx, state.Name.ValueString(), state.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading record", err.Error())
 		return
@@ -265,7 +265,7 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	params := r.buildUpdateParams(&state, &plan)
-	err := r.client.RecordUpdate(
+	err := r.client.RecordUpdate(ctx,
 		plan.Name.ValueString(),
 		plan.Zone.ValueString(),
 		plan.Type.ValueString(),
@@ -278,7 +278,7 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	// Read back
-	records, err := r.client.RecordGet(plan.Name.ValueString(), plan.Zone.ValueString())
+	records, err := r.client.RecordGet(ctx, plan.Name.ValueString(), plan.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading record after update", err.Error())
 		return
@@ -295,15 +295,15 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *RecordResource) Delete(_ context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *RecordResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state RecordResourceModel
-	resp.Diagnostics.Append(req.State.Get(context.Background(), &state)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	params := r.buildDeleteParams(&state)
-	err := r.client.RecordDelete(
+	err := r.client.RecordDelete(ctx,
 		state.Name.ValueString(),
 		state.Zone.ValueString(),
 		state.Type.ValueString(),

@@ -62,7 +62,7 @@ func (d *AllowedZonesDataSource) Read(ctx context.Context, req datasource.ReadRe
 		return
 	}
 
-	domains, err := zoneList(d.client, FilterZoneAllowed)
+	domains, err := zoneList(ctx, d.client, FilterZoneAllowed)
 	if err != nil {
 		resp.Diagnostics.AddError("Error listing allowed zones",
 			fmt.Sprintf("Could not retrieve allowed zone list: %s", err.Error()))

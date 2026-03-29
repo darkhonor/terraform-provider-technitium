@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -20,8 +21,8 @@ type TSIGKey struct {
 var ErrTSIGKeyNotFound = errors.New("TSIG key not found")
 
 // TSIGKeyList returns all TSIG keys from server settings.
-func (c *Client) TSIGKeyList() ([]TSIGKey, error) {
-	settings, err := c.SettingsGet()
+func (c *Client) TSIGKeyList(ctx context.Context) ([]TSIGKey, error) {
+	settings, err := c.SettingsGet(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("listing TSIG keys: %w", err)
 	}
@@ -32,8 +33,8 @@ func (c *Client) TSIGKeyList() ([]TSIGKey, error) {
 }
 
 // TSIGKeyGet returns a single TSIG key by name.
-func (c *Client) TSIGKeyGet(keyName string) (*TSIGKey, error) {
-	keys, err := c.TSIGKeyList()
+func (c *Client) TSIGKeyGet(ctx context.Context, keyName string) (*TSIGKey, error) {
+	keys, err := c.TSIGKeyList(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +50,7 @@ func (c *Client) TSIGKeyGet(keyName string) (*TSIGKey, error) {
 // writeTSIGKeys encodes the key list as pipe-delimited and writes to settings.
 // Format: name1|secret1|algo1|name2|secret2|algo2
 // Empty list sends tsigKeys=false to clear all keys.
-func (c *Client) writeTSIGKeys(keys []TSIGKey) error {
+func (c *Client) writeTSIGKeys(ctx context.Context, keys []TSIGKey) error {
 	value := "false"
 	if len(keys) > 0 {
 		parts := make([]string, 0, len(keys)*3)
@@ -58,7 +59,7 @@ func (c *Client) writeTSIGKeys(keys []TSIGKey) error {
 		}
 		value = strings.Join(parts, "|")
 	}
-	return c.SettingsSet(map[string]string{"tsigKeys": value})
+	return c.SettingsSet(ctx, map[string]string{"tsigKeys": value})
 }
 
 // validateTSIGKeyFields checks that no field contains the pipe delimiter
@@ -73,12 +74,12 @@ func validateTSIGKeyFields(key TSIGKey) error {
 }
 
 // TSIGKeyCreate adds a new TSIG key. Returns error if key name already exists.
-func (c *Client) TSIGKeyCreate(key TSIGKey) error {
+func (c *Client) TSIGKeyCreate(ctx context.Context, key TSIGKey) error {
 	if err := validateTSIGKeyFields(key); err != nil {
 		return fmt.Errorf("creating TSIG key: %w", err)
 	}
 
-	keys, err := c.TSIGKeyList()
+	keys, err := c.TSIGKeyList(ctx)
 	if err != nil {
 		return fmt.Errorf("creating TSIG key: %w", err)
 	}
@@ -91,19 +92,19 @@ func (c *Client) TSIGKeyCreate(key TSIGKey) error {
 	}
 
 	keys = append(keys, key)
-	if err := c.writeTSIGKeys(keys); err != nil {
+	if err := c.writeTSIGKeys(ctx, keys); err != nil {
 		return fmt.Errorf("creating TSIG key %q: %w", key.KeyName, err)
 	}
 	return nil
 }
 
 // TSIGKeyUpdate replaces an existing TSIG key by name.
-func (c *Client) TSIGKeyUpdate(key TSIGKey) error {
+func (c *Client) TSIGKeyUpdate(ctx context.Context, key TSIGKey) error {
 	if err := validateTSIGKeyFields(key); err != nil {
 		return fmt.Errorf("updating TSIG key: %w", err)
 	}
 
-	keys, err := c.TSIGKeyList()
+	keys, err := c.TSIGKeyList(ctx)
 	if err != nil {
 		return fmt.Errorf("updating TSIG key: %w", err)
 	}
@@ -120,15 +121,15 @@ func (c *Client) TSIGKeyUpdate(key TSIGKey) error {
 		return ErrTSIGKeyNotFound
 	}
 
-	if err := c.writeTSIGKeys(keys); err != nil {
+	if err := c.writeTSIGKeys(ctx, keys); err != nil {
 		return fmt.Errorf("updating TSIG key %q: %w", key.KeyName, err)
 	}
 	return nil
 }
 
 // TSIGKeyDelete removes a TSIG key by name. Idempotent — succeeds silently if key not found.
-func (c *Client) TSIGKeyDelete(keyName string) error {
-	keys, err := c.TSIGKeyList()
+func (c *Client) TSIGKeyDelete(ctx context.Context, keyName string) error {
+	keys, err := c.TSIGKeyList(ctx)
 	if err != nil {
 		return fmt.Errorf("deleting TSIG key: %w", err)
 	}
@@ -145,7 +146,7 @@ func (c *Client) TSIGKeyDelete(keyName string) error {
 		return nil
 	}
 
-	if err := c.writeTSIGKeys(filtered); err != nil {
+	if err := c.writeTSIGKeys(ctx, filtered); err != nil {
 		return fmt.Errorf("deleting TSIG key %q: %w", keyName, err)
 	}
 	return nil

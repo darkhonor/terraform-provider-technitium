@@ -23,6 +23,7 @@ linters:
     - forcetypeassert # Finds forced type assertions that can panic
 
     # --- Correctness ---
+    - noctx           # Detects HTTP requests without context.Context
     - gocritic        # Broad diagnostics for bugs, performance, and style
     - durationcheck   # Catches two durations multiplied together (common time bug)
     - copyloopvar     # Detects loop variable copy issues

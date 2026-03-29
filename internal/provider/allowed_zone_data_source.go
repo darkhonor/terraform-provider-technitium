@@ -66,7 +66,7 @@ func (d *AllowedZoneDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	domain := config.Domain.ValueString()
 
-	exists, err := readDomainExists(d.client, domain, FilterZoneAllowed)
+	exists, err := readDomainExists(ctx, d.client, domain, FilterZoneAllowed)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading allowed zone",
 			fmt.Sprintf("Could not check allowed zone %q: %s", domain, err.Error()))

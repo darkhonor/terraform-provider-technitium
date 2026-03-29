@@ -65,7 +65,7 @@ func (d *BlockedZoneDataSource) Read(ctx context.Context, req datasource.ReadReq
 	}
 
 	domain := config.Domain.ValueString()
-	exists, err := readDomainExists(d.client, domain, FilterZoneBlocked)
+	exists, err := readDomainExists(ctx, d.client, domain, FilterZoneBlocked)
 	if err != nil {
 		resp.Diagnostics.AddError("Error checking blocked zone",
 			fmt.Sprintf("Could not check blocked zone %q: %s", domain, err.Error()))

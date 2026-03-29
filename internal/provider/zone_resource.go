@@ -274,7 +274,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	// Create zone
-	domain, err := r.client.ZoneCreate(
+	domain, err := r.client.ZoneCreate(ctx,
 		plan.Name.ValueString(),
 		plan.Type.ValueString(),
 		plan.SOASerialDateScheme.ValueBool(),
@@ -294,7 +294,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Handle DNSSEC signing (NSS P256→P384 upgrade already handled in ModifyPlan)
 	if plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() && plan.Type.ValueString() == "Primary" {
-		err := r.client.ZoneDNSSECSign(
+		err := r.client.ZoneDNSSECSign(ctx,
 			plan.Name.ValueString(),
 			plan.DNSSEC.Algorithm.ValueString(),
 			plan.DNSSEC.Curve.ValueString(),
@@ -323,7 +323,7 @@ func (r *ZoneResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	// Check if zone still exists
-	exists, err := r.client.ZoneExists(state.Name.ValueString())
+	exists, err := r.client.ZoneExists(ctx, state.Name.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error checking zone existence", err.Error())
 		return
@@ -369,7 +369,7 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 
 		if planDNSSECEnabled && !stateDNSSECEnabled {
 			// Sign zone
-			err := r.client.ZoneDNSSECSign(
+			err := r.client.ZoneDNSSECSign(ctx,
 				plan.Name.ValueString(),
 				plan.DNSSEC.Algorithm.ValueString(),
 				plan.DNSSEC.Curve.ValueString(),
@@ -381,7 +381,7 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 			}
 		} else if !planDNSSECEnabled && stateDNSSECEnabled {
 			// Unsign zone
-			if err := r.client.ZoneDNSSECUnsign(plan.Name.ValueString()); err != nil {
+			if err := r.client.ZoneDNSSECUnsign(ctx, plan.Name.ValueString()); err != nil {
 				resp.Diagnostics.AddError("Error unsigning zone", err.Error())
 				return
 			}
@@ -397,14 +397,14 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
-func (r *ZoneResource) Delete(_ context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (r *ZoneResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state ZoneResourceModel
-	resp.Diagnostics.Append(req.State.Get(context.Background(), &state)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if err := r.client.ZoneDelete(state.Name.ValueString()); err != nil {
+	if err := r.client.ZoneDelete(ctx, state.Name.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error deleting zone", err.Error())
 	}
 }
@@ -463,14 +463,14 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 	}
 
 	if len(opts) > 0 {
-		return r.client.ZoneOptionsSet(plan.Name.ValueString(), opts)
+		return r.client.ZoneOptionsSet(ctx, plan.Name.ValueString(), opts)
 	}
 	return nil
 }
 
 // readZoneState reads the current zone state from the API.
 func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceModel) error {
-	zone, err := r.client.ZoneOptionsGet(model.Name.ValueString())
+	zone, err := r.client.ZoneOptionsGet(ctx, model.Name.ValueString())
 	if err != nil {
 		return fmt.Errorf("reading zone options: %w", err)
 	}
@@ -521,7 +521,7 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 	}
 
 	// Read SOA serial from zone list
-	zones, err := r.client.ZoneList()
+	zones, err := r.client.ZoneList(ctx)
 	if err != nil {
 		return fmt.Errorf("listing zones for SOA serial: %w", err)
 	}
@@ -534,7 +534,7 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 
 	// Read DNSSEC state
 	if zone.DNSSECStatus != "Unsigned" && zone.DNSSECStatus != "" {
-		props, err := r.client.ZoneDNSSECPropertiesGet(model.Name.ValueString())
+		props, err := r.client.ZoneDNSSECPropertiesGet(ctx, model.Name.ValueString())
 		if err != nil {
 			return fmt.Errorf("reading DNSSEC properties: %w", err)
 		}
@@ -567,8 +567,8 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 
 // validateTsigKeyReference checks that a TSIG key exists and, in NSS mode,
 // that its algorithm meets FIPS 140-3 / CNSSI 1253 requirements.
-func (r *ZoneResource) validateTsigKeyReference(keyName string, diagnostics *diag.Diagnostics) {
-	key, err := r.client.TSIGKeyGet(keyName)
+func (r *ZoneResource) validateTsigKeyReference(ctx context.Context, keyName string, diagnostics *diag.Diagnostics) {
+	key, err := r.client.TSIGKeyGet(ctx, keyName)
 	if err != nil {
 		if errors.Is(err, client.ErrTSIGKeyNotFound) {
 			diagnostics.AddError(
@@ -599,7 +599,7 @@ func (r *ZoneResource) validateTsigKeyReferences(ctx context.Context, plan *Zone
 		var keyNames []string
 		plan.ZoneTransferTsigKeyNames.ElementsAs(ctx, &keyNames, false)
 		for _, keyName := range keyNames {
-			r.validateTsigKeyReference(keyName, diagnostics)
+			r.validateTsigKeyReference(ctx, keyName, diagnostics)
 		}
 	}
 
@@ -607,7 +607,7 @@ func (r *ZoneResource) validateTsigKeyReferences(ctx context.Context, plan *Zone
 	if !plan.PrimaryZoneTransferTsigKeyName.IsNull() && !plan.PrimaryZoneTransferTsigKeyName.IsUnknown() {
 		keyName := plan.PrimaryZoneTransferTsigKeyName.ValueString()
 		if keyName != "" {
-			r.validateTsigKeyReference(keyName, diagnostics)
+			r.validateTsigKeyReference(ctx, keyName, diagnostics)
 		}
 	}
 }

@@ -87,7 +87,7 @@ func (r *AllowedZonesResource) Create(ctx context.Context, req resource.CreateRe
 	}
 
 	for _, d := range domains {
-		if _, err := checkAndSetCreate(r.client, d, FilterZoneAllowed); err != nil {
+		if _, err := checkAndSetCreate(ctx, r.client, d, FilterZoneAllowed); err != nil {
 			resp.Diagnostics.AddError("Error creating allowed zone", err.Error())
 			return
 		}
@@ -118,7 +118,7 @@ func (r *AllowedZonesResource) Read(ctx context.Context, req resource.ReadReques
 
 	var existing []string
 	for _, d := range stateDomains {
-		exists, err := readDomainExists(r.client, d, FilterZoneAllowed)
+		exists, err := readDomainExists(ctx, r.client, d, FilterZoneAllowed)
 		if err != nil {
 			resp.Diagnostics.AddError("Error reading allowed zone", err.Error())
 			return
@@ -168,7 +168,7 @@ func (r *AllowedZonesResource) Update(ctx context.Context, req resource.UpdateRe
 		return
 	}
 
-	if err := reconcileSet(r.client, stateDomains, planDomains, FilterZoneAllowed); err != nil {
+	if err := reconcileSet(ctx, r.client, stateDomains, planDomains, FilterZoneAllowed); err != nil {
 		resp.Diagnostics.AddError("Error updating allowed zones", err.Error())
 		return
 	}
@@ -192,7 +192,7 @@ func (r *AllowedZonesResource) Delete(ctx context.Context, req resource.DeleteRe
 	}
 
 	for _, d := range domains {
-		if err := checkAndSetDelete(r.client, d, FilterZoneAllowed); err != nil {
+		if err := checkAndSetDelete(ctx, r.client, d, FilterZoneAllowed); err != nil {
 			resp.Diagnostics.AddError("Error deleting allowed zone", err.Error())
 			return
 		}

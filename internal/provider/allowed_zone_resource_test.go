@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"testing"
@@ -43,11 +44,11 @@ func TestAccAllowedZoneResource_checkAndSetAdopt(t *testing.T) {
 	c := testAccDirectClient(t)
 
 	// Pre-create the zone via direct API call so Terraform must adopt it
-	if err := c.AllowedZoneAdd(domain); err != nil {
+	if err := c.AllowedZoneAdd(context.Background(), domain); err != nil {
 		t.Fatalf("pre-create allowed zone: %v", err)
 	}
 	t.Cleanup(func() {
-		_ = c.AllowedZoneDelete(domain)
+		_ = c.AllowedZoneDelete(context.Background(), domain)
 	})
 
 	resource.Test(t, resource.TestCase{

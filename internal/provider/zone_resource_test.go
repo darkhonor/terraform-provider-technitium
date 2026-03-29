@@ -4,6 +4,7 @@
 package provider
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"regexp"
@@ -576,12 +577,12 @@ func TestAccZoneResource_NSS_TsigKeyCompliant_sha512(t *testing.T) {
 func TestAccZoneResource_NSS_TsigKeyNonCompliant_md5(t *testing.T) {
 	c := testAccDirectClient(t)
 	keyName := "acc-nss-zk-md5.example.com"
-	_ = c.TSIGKeyDelete(keyName) // best-effort cleanup of stale key from prior runs
-	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-md5.sig-alg.reg.int"}); err != nil {
+	_ = c.TSIGKeyDelete(context.Background(), keyName) // best-effort cleanup of stale key from prior runs
+	if err := c.TSIGKeyCreate(context.Background(), client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-md5.sig-alg.reg.int"}); err != nil {
 		t.Fatalf("failed to pre-create TSIG key: %s", err)
 	}
 	t.Cleanup(func() {
-		if err := c.TSIGKeyDelete(keyName); err != nil {
+		if err := c.TSIGKeyDelete(context.Background(), keyName); err != nil {
 			t.Logf("cleanup: failed to delete TSIG key %s: %v", keyName, err)
 		}
 	})
@@ -600,12 +601,12 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_md5(t *testing.T) {
 func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha1(t *testing.T) {
 	c := testAccDirectClient(t)
 	keyName := "acc-nss-zk-sha1.example.com"
-	_ = c.TSIGKeyDelete(keyName) // best-effort cleanup of stale key from prior runs
-	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha1"}); err != nil {
+	_ = c.TSIGKeyDelete(context.Background(), keyName) // best-effort cleanup of stale key from prior runs
+	if err := c.TSIGKeyCreate(context.Background(), client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha1"}); err != nil {
 		t.Fatalf("failed to pre-create TSIG key: %s", err)
 	}
 	t.Cleanup(func() {
-		if err := c.TSIGKeyDelete(keyName); err != nil {
+		if err := c.TSIGKeyDelete(context.Background(), keyName); err != nil {
 			t.Logf("cleanup: failed to delete TSIG key %s: %v", keyName, err)
 		}
 	})
@@ -624,12 +625,12 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha1(t *testing.T) {
 func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha256_128(t *testing.T) {
 	c := testAccDirectClient(t)
 	keyName := "acc-nss-zk-sha256-128.example.com"
-	_ = c.TSIGKeyDelete(keyName) // best-effort cleanup of stale key from prior runs
-	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha256-128"}); err != nil {
+	_ = c.TSIGKeyDelete(context.Background(), keyName) // best-effort cleanup of stale key from prior runs
+	if err := c.TSIGKeyCreate(context.Background(), client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha256-128"}); err != nil {
 		t.Fatalf("failed to pre-create TSIG key: %s", err)
 	}
 	t.Cleanup(func() {
-		if err := c.TSIGKeyDelete(keyName); err != nil {
+		if err := c.TSIGKeyDelete(context.Background(), keyName); err != nil {
 			t.Logf("cleanup: failed to delete TSIG key %s: %v", keyName, err)
 		}
 	})
@@ -648,12 +649,12 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha256_128(t *testing.T) {
 func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha384_192(t *testing.T) {
 	c := testAccDirectClient(t)
 	keyName := "acc-nss-zk-sha384-192.example.com"
-	_ = c.TSIGKeyDelete(keyName) // best-effort cleanup of stale key from prior runs
-	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha384-192"}); err != nil {
+	_ = c.TSIGKeyDelete(context.Background(), keyName) // best-effort cleanup of stale key from prior runs
+	if err := c.TSIGKeyCreate(context.Background(), client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha384-192"}); err != nil {
 		t.Fatalf("failed to pre-create TSIG key: %s", err)
 	}
 	t.Cleanup(func() {
-		if err := c.TSIGKeyDelete(keyName); err != nil {
+		if err := c.TSIGKeyDelete(context.Background(), keyName); err != nil {
 			t.Logf("cleanup: failed to delete TSIG key %s: %v", keyName, err)
 		}
 	})
@@ -672,12 +673,12 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha384_192(t *testing.T) {
 func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha512_256(t *testing.T) {
 	c := testAccDirectClient(t)
 	keyName := "acc-nss-zk-sha512-256.example.com"
-	_ = c.TSIGKeyDelete(keyName) // best-effort cleanup of stale key from prior runs
-	if err := c.TSIGKeyCreate(client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha512-256"}); err != nil {
+	_ = c.TSIGKeyDelete(context.Background(), keyName) // best-effort cleanup of stale key from prior runs
+	if err := c.TSIGKeyCreate(context.Background(), client.TSIGKey{KeyName: keyName, AlgorithmName: "hmac-sha512-256"}); err != nil {
 		t.Fatalf("failed to pre-create TSIG key: %s", err)
 	}
 	t.Cleanup(func() {
-		if err := c.TSIGKeyDelete(keyName); err != nil {
+		if err := c.TSIGKeyDelete(context.Background(), keyName); err != nil {
 			t.Logf("cleanup: failed to delete TSIG key %s: %v", keyName, err)
 		}
 	})

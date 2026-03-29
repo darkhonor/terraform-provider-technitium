@@ -344,7 +344,7 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	}
 
 	// Verify connectivity with tiered TLS error diagnostics
-	if err := apiClient.Ping(); err != nil {
+	if err := apiClient.Ping(ctx); err != nil {
 		isHTTPS := strings.HasPrefix(serverURL, "https://")
 		if isHTTPS {
 			tlsErr := client.ClassifyTLSError(err)

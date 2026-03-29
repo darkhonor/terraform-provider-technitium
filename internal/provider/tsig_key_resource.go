@@ -167,13 +167,13 @@ func (r *TSIGKeyResource) Create(ctx context.Context, req resource.CreateRequest
 		SharedSecret:  plan.SharedSecret.ValueString(),
 	}
 
-	if err := r.client.TSIGKeyCreate(key); err != nil {
+	if err := r.client.TSIGKeyCreate(ctx, key); err != nil {
 		resp.Diagnostics.AddError("Error creating TSIG key", err.Error())
 		return
 	}
 
 	// Read back state from the API
-	created, err := r.client.TSIGKeyGet(plan.KeyName.ValueString())
+	created, err := r.client.TSIGKeyGet(ctx, plan.KeyName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading TSIG key after create", err.Error())
 		return
@@ -194,7 +194,7 @@ func (r *TSIGKeyResource) Read(ctx context.Context, req resource.ReadRequest, re
 		return
 	}
 
-	key, err := r.client.TSIGKeyGet(state.KeyName.ValueString())
+	key, err := r.client.TSIGKeyGet(ctx, state.KeyName.ValueString())
 	if err != nil {
 		if errors.Is(err, client.ErrTSIGKeyNotFound) {
 			resp.State.RemoveResource(ctx)
@@ -225,13 +225,13 @@ func (r *TSIGKeyResource) Update(ctx context.Context, req resource.UpdateRequest
 		SharedSecret:  plan.SharedSecret.ValueString(),
 	}
 
-	if err := r.client.TSIGKeyUpdate(key); err != nil {
+	if err := r.client.TSIGKeyUpdate(ctx, key); err != nil {
 		resp.Diagnostics.AddError("Error updating TSIG key", err.Error())
 		return
 	}
 
 	// Read back state
-	updated, err := r.client.TSIGKeyGet(plan.KeyName.ValueString())
+	updated, err := r.client.TSIGKeyGet(ctx, plan.KeyName.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading TSIG key after update", err.Error())
 		return
@@ -252,7 +252,7 @@ func (r *TSIGKeyResource) Delete(ctx context.Context, req resource.DeleteRequest
 		return
 	}
 
-	if err := r.client.TSIGKeyDelete(state.KeyName.ValueString()); err != nil {
+	if err := r.client.TSIGKeyDelete(ctx, state.KeyName.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error deleting TSIG key", err.Error())
 	}
 }

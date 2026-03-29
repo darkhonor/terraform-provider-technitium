@@ -110,7 +110,7 @@ func (d *RecordDataSource) Read(ctx context.Context, req datasource.ReadRequest,
 		return
 	}
 
-	records, err := d.client.RecordGet(config.Name.ValueString(), config.Zone.ValueString())
+	records, err := d.client.RecordGet(ctx, config.Name.ValueString(), config.Zone.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading records", err.Error())
 		return

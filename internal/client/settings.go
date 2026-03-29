@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -60,8 +61,8 @@ type ServerSettings struct {
 }
 
 // SettingsGet returns the current server settings.
-func (c *Client) SettingsGet() (*ServerSettings, error) {
-	resp, err := c.doGet("/api/settings/get", nil)
+func (c *Client) SettingsGet(ctx context.Context) (*ServerSettings, error) {
+	resp, err := c.doGet(ctx, "/api/settings/get", nil)
 	if err != nil {
 		return nil, fmt.Errorf("getting server settings: %w", err)
 	}
@@ -75,13 +76,13 @@ func (c *Client) SettingsGet() (*ServerSettings, error) {
 }
 
 // SettingsSet updates server settings via POST.
-func (c *Client) SettingsSet(params map[string]string) error {
+func (c *Client) SettingsSet(ctx context.Context, params map[string]string) error {
 	qp := url.Values{}
 	for k, v := range params {
 		qp.Set(k, v)
 	}
 
-	_, err := c.doPost("/api/settings/set", qp)
+	_, err := c.doPost(ctx, "/api/settings/set", qp)
 	if err != nil {
 		return fmt.Errorf("updating server settings: %w", err)
 	}

@@ -87,7 +87,7 @@ func (r *BlockedZoneResource) Create(ctx context.Context, req resource.CreateReq
 
 	domain := plan.Domain.ValueString()
 
-	if _, err := checkAndSetCreate(r.client, domain, FilterZoneBlocked); err != nil {
+	if _, err := checkAndSetCreate(ctx, r.client, domain, FilterZoneBlocked); err != nil {
 		resp.Diagnostics.AddError("Error creating blocked zone", err.Error())
 		return
 	}
@@ -105,7 +105,7 @@ func (r *BlockedZoneResource) Read(ctx context.Context, req resource.ReadRequest
 
 	domain := state.Domain.ValueString()
 
-	exists, err := readDomainExists(r.client, domain, FilterZoneBlocked)
+	exists, err := readDomainExists(ctx, r.client, domain, FilterZoneBlocked)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading blocked zone", err.Error())
 		return
@@ -133,7 +133,7 @@ func (r *BlockedZoneResource) Delete(ctx context.Context, req resource.DeleteReq
 		return
 	}
 
-	if err := checkAndSetDelete(r.client, state.Domain.ValueString(), FilterZoneBlocked); err != nil {
+	if err := checkAndSetDelete(ctx, r.client, state.Domain.ValueString(), FilterZoneBlocked); err != nil {
 		resp.Diagnostics.AddError("Error deleting blocked zone", err.Error())
 	}
 }

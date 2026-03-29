@@ -4,6 +4,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
@@ -41,7 +42,7 @@ type RecordGetResponse struct {
 //   - PTR: "ptrName"
 //   - NS: "nameServer"
 //   - CAA: "flags", "tag", "value"
-func (c *Client) RecordAdd(domain, zone, recordType string, ttl int, overwrite bool, params map[string]string) (*Record, error) {
+func (c *Client) RecordAdd(ctx context.Context, domain, zone, recordType string, ttl int, overwrite bool, params map[string]string) (*Record, error) {
 	qp := url.Values{
 		"domain": {domain},
 		"zone":   {zone},
@@ -57,7 +58,7 @@ func (c *Client) RecordAdd(domain, zone, recordType string, ttl int, overwrite b
 		qp.Set(k, v)
 	}
 
-	resp, err := c.doGet("/api/zones/records/add", qp)
+	resp, err := c.doGet(ctx, "/api/zones/records/add", qp)
 	if err != nil {
 		return nil, fmt.Errorf("adding %s record for %q in zone %q: %w", recordType, domain, zone, err)
 	}
@@ -71,13 +72,13 @@ func (c *Client) RecordAdd(domain, zone, recordType string, ttl int, overwrite b
 }
 
 // RecordGet retrieves records for a domain in a zone, optionally filtered by type.
-func (c *Client) RecordGet(domain, zone string) ([]Record, error) {
+func (c *Client) RecordGet(ctx context.Context, domain, zone string) ([]Record, error) {
 	qp := url.Values{
 		"domain": {domain},
 		"zone":   {zone},
 	}
 
-	resp, err := c.doGet("/api/zones/records/get", qp)
+	resp, err := c.doGet(ctx, "/api/zones/records/get", qp)
 	if err != nil {
 		return nil, fmt.Errorf("getting records for %q in zone %q: %w", domain, zone, err)
 	}
@@ -96,7 +97,7 @@ func (c *Client) RecordGet(domain, zone string) ([]Record, error) {
 // For CNAME: "cname" (new value)
 // For MX: "exchange" (current), "newExchange" (new), "preference", "newPreference"
 // etc.
-func (c *Client) RecordUpdate(domain, zone, recordType string, ttl int, params map[string]string) error {
+func (c *Client) RecordUpdate(ctx context.Context, domain, zone, recordType string, ttl int, params map[string]string) error {
 	qp := url.Values{
 		"domain": {domain},
 		"zone":   {zone},
@@ -109,7 +110,7 @@ func (c *Client) RecordUpdate(domain, zone, recordType string, ttl int, params m
 		qp.Set(k, v)
 	}
 
-	_, err := c.doGet("/api/zones/records/update", qp)
+	_, err := c.doGet(ctx, "/api/zones/records/update", qp)
 	if err != nil {
 		return fmt.Errorf("updating %s record for %q in zone %q: %w", recordType, domain, zone, err)
 	}
@@ -126,7 +127,7 @@ func (c *Client) RecordUpdate(domain, zone, recordType string, ttl int, params m
 //   - PTR: "ptrName"
 //   - NS: "nameServer"
 //   - CAA: "flags", "tag", "value"
-func (c *Client) RecordDelete(domain, zone, recordType string, params map[string]string) error {
+func (c *Client) RecordDelete(ctx context.Context, domain, zone, recordType string, params map[string]string) error {
 	qp := url.Values{
 		"domain": {domain},
 		"zone":   {zone},
@@ -136,7 +137,7 @@ func (c *Client) RecordDelete(domain, zone, recordType string, params map[string
 		qp.Set(k, v)
 	}
 
-	_, err := c.doGet("/api/zones/records/delete", qp)
+	_, err := c.doGet(ctx, "/api/zones/records/delete", qp)
 	if err != nil {
 		return fmt.Errorf("deleting %s record for %q in zone %q: %w", recordType, domain, zone, err)
 	}

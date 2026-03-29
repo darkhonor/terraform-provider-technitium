@@ -102,7 +102,7 @@ func (d *ServerSettingsDataSource) Configure(_ context.Context, req datasource.C
 }
 
 func (d *ServerSettingsDataSource) Read(ctx context.Context, _ datasource.ReadRequest, resp *datasource.ReadResponse) {
-	settings, err := d.client.SettingsGet()
+	settings, err := d.client.SettingsGet(ctx)
 	if err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
