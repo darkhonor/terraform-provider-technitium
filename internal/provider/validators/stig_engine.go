@@ -39,8 +39,8 @@ type Engine struct {
 // NewEngine constructs an engine from config, indexing all requirements.
 func NewEngine(config EngineConfig) *Engine {
 	reqs := make(map[string]DNSSecurityRequirement, len(DNSSecurityRequirements))
-	for _, req := range DNSSecurityRequirements {
-		reqs[req.ID] = req
+	for i := range DNSSecurityRequirements {
+		reqs[DNSSecurityRequirements[i].ID] = DNSSecurityRequirements[i]
 	}
 	return &Engine{
 		config:       config,

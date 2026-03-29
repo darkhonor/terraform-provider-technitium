@@ -122,7 +122,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 // certDir was specified (certFile parse failures are always fatal).
 func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 	if certFile == "" && certDir == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil pool signals "use system CA defaults" to caller
 	}
 	pool := x509.NewCertPool()
 	loaded := 0
