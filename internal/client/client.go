@@ -182,7 +182,7 @@ func (c *Client) doGet(path string, params url.Values) (*APIResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.parseResponse(resp)
 }
@@ -199,7 +199,7 @@ func (c *Client) doPost(path string, params url.Values) (*APIResponse, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	return c.parseResponse(resp)
 }

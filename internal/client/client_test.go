@@ -288,7 +288,7 @@ func TestNewClient_CACertFile_Valid(t *testing.T) {
 	if _, err := f.Write(certPEM); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	c, err := NewClient(ClientConfig{
 		BaseURL:    "https://localhost:5380",
@@ -326,7 +326,7 @@ func TestNewClient_CACertFile_InvalidPEM(t *testing.T) {
 	if _, err := f.WriteString("this is not valid PEM data"); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	_, err = NewClient(ClientConfig{
 		BaseURL:    "https://localhost:5380",
@@ -428,7 +428,7 @@ func TestNewClient_CACertFileAndDir_Combined(t *testing.T) {
 	if _, err := f.Write(certPEM1); err != nil {
 		t.Fatal(err)
 	}
-	f.Close()
+	_ = f.Close()
 
 	if err := os.WriteFile(filepath.Join(dir, "ca2.pem"), certPEM2, 0600); err != nil {
 		t.Fatal(err)

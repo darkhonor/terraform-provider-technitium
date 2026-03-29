@@ -29,7 +29,7 @@ func exportFilteredZones(c *Client, path string) ([]string, error) {
 	if err != nil {
 		return nil, fmt.Errorf("request to %s failed: %w", path, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {

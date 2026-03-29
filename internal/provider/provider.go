@@ -463,7 +463,7 @@ func validateCategorization(cat *CategorizationModel, nss bool) (Categorization,
 	}
 
 	// Rule: NSS requires all three objectives
-	if nss && !(hasConf && hasInteg && hasAvail) {
+	if nss && (!hasConf || !hasInteg || !hasAvail) {
 		diags.AddError("Incomplete NSS categorization",
 			"National Security Systems require all three objectives: confidentiality, integrity, and availability.")
 		return result, diags
