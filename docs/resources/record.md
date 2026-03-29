@@ -108,6 +108,28 @@ resource "technitium_record" "ptr" {
 }
 ```
 
+### Multiple Records at Same Name (Round-Robin)
+
+```hcl
+resource "technitium_record" "web1" {
+  zone      = "example.com"
+  name      = "www.example.com"
+  type      = "A"
+  value     = "192.168.1.100"
+  overwrite = false
+}
+
+resource "technitium_record" "web2" {
+  zone      = "example.com"
+  name      = "www.example.com"
+  type      = "A"
+  value     = "192.168.1.101"
+  overwrite = false
+}
+```
+
+-> When creating multiple records at the same name and type, set `overwrite = false` on each resource to prevent them from replacing each other.
+
 ## Argument Reference
 
 * `zone` - (Required, String) Parent zone name. (Forces replacement.)
@@ -136,14 +158,24 @@ resource "technitium_record" "ptr" {
 
 In addition to the arguments above, the following computed attributes are exported:
 
-* `id` - Record identifier (zone/name/type composite key).
+* `id` - Record identifier (`zone::name::type::value` composite key). For MX records: `zone::name::MX::exchange:priority`. For SRV records: `zone::name::SRV::target:priority:weight:port`. For CAA records: `zone::name::CAA::value:flags:tag`.
 
 * `last_modified` - Timestamp of last modification.
 
 ## Import
 
-DNS records can be imported using the zone, name, and type separated by slashes.
+DNS records can be imported using the `::` separator with the format `zone::name::type::value`.
 
 ```shell
-terraform import technitium_record.web example.com/www.example.com/A
+# A record
+terraform import technitium_record.web "example.com::www.example.com::A::192.168.1.100"
+
+# MX record (exchange:priority)
+terraform import technitium_record.mail "example.com::example.com::MX::mail.example.com:10"
+
+# SRV record (target:priority:weight:port)
+terraform import technitium_record.sip "example.com::_sip._tcp.example.com::SRV::sip.example.com:10:60:5060"
+
+# CAA record (value:flags:tag)
+terraform import technitium_record.caa "example.com::example.com::CAA::letsencrypt.org:0:issue"
 ```
