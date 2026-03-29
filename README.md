@@ -32,7 +32,7 @@ and `terraform plan` time, catching misconfigurations before they reach your DNS
 ## Features
 
 - DNS zone management (Primary, Secondary, Stub, Forwarder)
-- DNS record management (A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA)
+- DNS record management (A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA) with multi-record support for round-robin, multiple MX exchanges, and other multi-value configurations
 - DNSSEC signing configuration
 - TSIG key management for authenticated zone transfers
 - Server-wide DNS settings
@@ -72,6 +72,27 @@ resource "technitium_record" "web" {
   name  = "www.example.com"
   type  = "A"
   value = "192.168.1.100"
+}
+```
+
+Multiple records at the same name and type are fully supported — set `overwrite = false` to
+manage individual records within an RRset:
+
+```hcl
+resource "technitium_record" "web1" {
+  zone      = technitium_zone.example.name
+  name      = "www.example.com"
+  type      = "A"
+  value     = "192.168.1.100"
+  overwrite = false
+}
+
+resource "technitium_record" "web2" {
+  zone      = technitium_zone.example.name
+  name      = "www.example.com"
+  type      = "A"
+  value     = "192.168.1.101"
+  overwrite = false
 }
 ```
 
