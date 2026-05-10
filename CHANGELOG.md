@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- New `technitium_catalog_membership` resource manages catalog zone membership
+  (RFC 9432) declaratively for Primary, Secondary, Stub, and Forwarder zones.
+  Plan-time validation against the live Technitium API verifies that both the
+  member zone and the catalog zone exist and that the catalog zone is of type
+  Catalog or SecondaryCatalog. Destroying the resource unsets membership
+  without deleting the underlying zone. ([#23])
+- New `Client.ZoneSetCatalog(ctx, zone, catalog)` API client helper. Passing
+  an empty catalog string unsets membership.
+
+### Known limitations
+
+- The three Technitium per-member catalog override flags
+  (`overrideCatalogQueryAccess`, `overrideCatalogZoneTransfer`,
+  `overrideCatalogNotify`) are not yet exposed. Until they are, settings
+  inherited from the catalog zone (queryAccess, zoneTransfer, notify) take
+  precedence over any matching settings declared on the member zone via
+  `technitium_zone`. The `technitium_catalog_membership` resource emits a
+  plan-time warning whenever it is created or updated. Tracked in [#29].
+- Catalog-driven zone provisioning to secondary name servers is not exercised
+  by the current acceptance suite (single-node test container). Tracked in
+  [#30].
+
+[#23]: https://github.com/darkhonor/terraform-provider-technitium/issues/23
+[#29]: https://github.com/darkhonor/terraform-provider-technitium/issues/29
+[#30]: https://github.com/darkhonor/terraform-provider-technitium/issues/30
+
 ## [1.1.0] - 2026-03-29
 
 ### Breaking Changes

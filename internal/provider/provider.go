@@ -299,8 +299,8 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		// provider-level validation passes.
 		if providerData.STIGEnabled {
 			engine := validators.NewEngine(validators.EngineConfig{
-				Enabled:     true,
-				Enforcement: enforcement,
+				Enabled:      true,
+				Enforcement:  enforcement,
 				Suppressions: suppressions,
 				Categorization: validators.Categorization{
 					Confidentiality: providerData.Categorization.Confidentiality,
@@ -374,6 +374,7 @@ func (p *TechnitiumProvider) Resources(_ context.Context) []func() resource.Reso
 		NewBlockedZonesResource,
 		NewAllowedZoneResource,
 		NewAllowedZonesResource,
+		NewCatalogMembershipResource,
 	}
 }
 

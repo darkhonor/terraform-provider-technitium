@@ -13,25 +13,25 @@ import (
 
 // Zone represents a Technitium DNS zone from the API.
 type Zone struct {
-	Name                   string   `json:"name"`
-	Type                   string   `json:"type"`
-	Internal               bool     `json:"internal"`
-	Disabled               bool     `json:"disabled"`
-	DNSSECStatus           string   `json:"dnssecStatus"`
-	SOASerial              int      `json:"soaSerial"`
-	NotifyFailed           bool     `json:"notifyFailed"`
-	NotifyFailedFor        []string `json:"notifyFailedFor"`
-	Catalog                *string  `json:"catalog"`
-	QueryAccess            string   `json:"queryAccess"`
-	QueryAccessNetworkACL  []string `json:"queryAccessNetworkACL"`
-	ZoneTransfer           string   `json:"zoneTransfer"`
-	ZoneTransferNetworkACL []string `json:"zoneTransferNetworkACL"`
+	Name                           string   `json:"name"`
+	Type                           string   `json:"type"`
+	Internal                       bool     `json:"internal"`
+	Disabled                       bool     `json:"disabled"`
+	DNSSECStatus                   string   `json:"dnssecStatus"`
+	SOASerial                      int      `json:"soaSerial"`
+	NotifyFailed                   bool     `json:"notifyFailed"`
+	NotifyFailedFor                []string `json:"notifyFailedFor"`
+	Catalog                        *string  `json:"catalog"`
+	QueryAccess                    string   `json:"queryAccess"`
+	QueryAccessNetworkACL          []string `json:"queryAccessNetworkACL"`
+	ZoneTransfer                   string   `json:"zoneTransfer"`
+	ZoneTransferNetworkACL         []string `json:"zoneTransferNetworkACL"`
 	ZoneTransferTsigKeys           []string `json:"zoneTransferTsigKeyNames"`
 	PrimaryZoneTransferTsigKeyName string   `json:"primaryZoneTransferTsigKeyName"`
 	Notify                         string   `json:"notify"`
-	NotifyNameServers      []string `json:"notifyNameServers"`
-	Update                 string   `json:"update"`
-	UpdateNetworkACL       []string `json:"updateNetworkACL"`
+	NotifyNameServers              []string `json:"notifyNameServers"`
+	Update                         string   `json:"update"`
+	UpdateNetworkACL               []string `json:"updateNetworkACL"`
 }
 
 // ZoneListItem is a zone entry from /api/zones/list.
@@ -49,13 +49,13 @@ type ZoneListItem struct {
 
 // DNSSECProperties holds DNSSEC signing info for a zone.
 type DNSSECProperties struct {
-	Name             string           `json:"name"`
-	Type             string           `json:"type"`
-	DNSSECStatus     string           `json:"dnssecStatus"`
-	NSEC3Iterations  int              `json:"nsec3Iterations"`
-	NSEC3SaltLength  int              `json:"nsec3SaltLength"`
-	DNSKeyTTL        int              `json:"dnsKeyTtl"`
-	DNSSECPrivateKeys []DNSSECKey     `json:"dnssecPrivateKeys"`
+	Name              string      `json:"name"`
+	Type              string      `json:"type"`
+	DNSSECStatus      string      `json:"dnssecStatus"`
+	NSEC3Iterations   int         `json:"nsec3Iterations"`
+	NSEC3SaltLength   int         `json:"nsec3SaltLength"`
+	DNSKeyTTL         int         `json:"dnsKeyTtl"`
+	DNSSECPrivateKeys []DNSSECKey `json:"dnssecPrivateKeys"`
 }
 
 // DNSSECKey represents a DNSSEC private key.
@@ -74,8 +74,8 @@ type DSRecord struct {
 	KeyTag    int    `json:"keyTag"`
 	Algorithm string `json:"algorithm"`
 	Digests   []struct {
-		DigestType       string `json:"digestType"`
-		Digest           string `json:"digest"`
+		DigestType string `json:"digestType"`
+		Digest     string `json:"digest"`
 	} `json:"digests"`
 }
 
@@ -172,6 +172,16 @@ func (c *Client) ZoneOptionsSet(ctx context.Context, name string, opts map[strin
 		return fmt.Errorf("setting zone options for %q: %w", name, err)
 	}
 	return nil
+}
+
+// ZoneSetCatalog assigns a member zone to a catalog zone. Passing an empty
+// catalog string removes the member zone from any catalog (unsets membership).
+//
+// The Technitium API accepts the "catalog" parameter on /api/zones/options/set
+// for Primary, Secondary, Stub, and Forwarder member zones. The catalog zone
+// must be of type Catalog or SecondaryCatalog and must already exist.
+func (c *Client) ZoneSetCatalog(ctx context.Context, zone, catalog string) error {
+	return c.ZoneOptionsSet(ctx, zone, map[string]string{"catalog": catalog})
 }
 
 // ZoneDNSSECSign signs a zone with DNSSEC.
