@@ -77,7 +77,8 @@ func run(outDir, hostList string, validity time.Duration, pfxPassword string) er
 	if validity <= 5*time.Minute {
 		return fmt.Errorf("-duration must be greater than 5m (got %s) — short windows collide with the cert backdating offset", validity)
 	}
-	if err := os.MkdirAll(outDir, 0o755); err != nil {
+	// 0750 is the strictest mode gosec G301 will accept for a directory.
+	if err := os.MkdirAll(outDir, 0o750); err != nil {
 		return fmt.Errorf("creating output directory %q: %w", outDir, err)
 	}
 

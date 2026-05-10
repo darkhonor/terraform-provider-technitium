@@ -82,6 +82,14 @@ jobs:
         with:
           go-version: "1.26"
 
+      # Pre-install Terraform CLI so terraform-plugin-testing uses it from PATH
+      # instead of having hc-install download a binary at runtime. Avoids the
+      # upstream HashiCorp PGP key expiry that breaks hc-install's signature
+      # verification — same fix the Documentation workflow needed.
+      - uses: hashicorp/setup-terraform@5e8dbf3c6d9deaf4193ca7a8fb23f2ac83bb6c85 # v4.0.0
+        with:
+          terraform_wrapper: false
+
       # docker-compose.test.yml uses env_file: .env.test for the container's
       # admin password. CI does not commit .env.test (it is gitignored), so
       # bootstrap a stub from the example. The TLS acceptance path overrides
