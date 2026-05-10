@@ -36,18 +36,13 @@ func TestAccTSIGKeyResource_basic(t *testing.T) {
 }
 
 func testAccTSIGKeyResourceBasic() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_tsig_key" "test" {
   key_name      = "acc-basic.example.com"
   algorithm     = "hmac-sha256"
   shared_secret = "dGVzdHNlY3JldGtleWZvcmFjY2VwdGFuY2V0ZXN0cw=="
 }
-`, testAccAPIToken())
+`
 }
 
 func TestAccTSIGKeyResource_generated_secret(t *testing.T) {
@@ -67,17 +62,12 @@ func TestAccTSIGKeyResource_generated_secret(t *testing.T) {
 }
 
 func testAccTSIGKeyResourceGeneratedSecret() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_tsig_key" "gen" {
   key_name  = "acc-gen.example.com"
   algorithm = "hmac-sha256"
 }
-`, testAccAPIToken())
+`
 }
 
 func TestAccTSIGKeyResource_update_algorithm(t *testing.T) {
@@ -101,18 +91,13 @@ func TestAccTSIGKeyResource_update_algorithm(t *testing.T) {
 }
 
 func testAccTSIGKeyResourceWithAlgo(name, algo, secret string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_tsig_key" "upd" {
   key_name      = %q
   algorithm     = %q
   shared_secret = %q
 }
-`, testAccAPIToken(), name, algo, secret)
+`, name, algo, secret)
 }
 
 func TestAccTSIGKeyResource_update_secret(t *testing.T) {
@@ -153,12 +138,7 @@ func TestAccTSIGKeyResource_multiple_keys(t *testing.T) {
 }
 
 func testAccTSIGKeyResourceMultiple() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_tsig_key" "key1" {
   key_name      = "acc-multi1.example.com"
   algorithm     = "hmac-sha256"
@@ -172,7 +152,7 @@ resource "technitium_tsig_key" "key2" {
 
   depends_on = [technitium_tsig_key.key1]
 }
-`, testAccAPIToken())
+`
 }
 
 func TestAccTSIGKeyResource_rename_forces_new(t *testing.T) {
@@ -196,18 +176,13 @@ func TestAccTSIGKeyResource_rename_forces_new(t *testing.T) {
 }
 
 func testAccTSIGKeyResourceWithName(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_tsig_key" "rename" {
   key_name      = %q
   algorithm     = "hmac-sha256"
   shared_secret = "cmVuYW1ldGVzdHNlY3JldA=="
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 func TestAccTSIGKeyResource_algorithms(t *testing.T) {
@@ -241,28 +216,12 @@ func TestAccTSIGKeyResource_algorithms(t *testing.T) {
 // --- NSS acceptance tests ---
 
 func testAccTSIGKeyResourceNSS(name, algo string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-
-  stig_compliance {
-    enabled = true
-    nss     = true
-
-    categorization {
-      confidentiality = "high"
-      integrity       = "high"
-      availability    = "moderate"
-    }
-  }
-}
-
+	return testAccProviderHCL_NSS("high", "high", "moderate") + fmt.Sprintf(`
 resource "technitium_tsig_key" "nss" {
   key_name  = %q
   algorithm = %q
 }
-`, testAccAPIToken(), name, algo)
+`, name, algo)
 }
 
 func TestAccTSIGKeyResource_NSS_allowed_sha256(t *testing.T) {
@@ -387,12 +346,7 @@ func TestAccTSIGKeyDataSource_basic(t *testing.T) {
 }
 
 func testAccTSIGKeyDataSourceBasic() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_tsig_key" "seed" {
   key_name      = "acc-ds.example.com"
   algorithm     = "hmac-sha256"
@@ -402,20 +356,15 @@ resource "technitium_tsig_key" "seed" {
 data "technitium_tsig_key" "test" {
   key_name = technitium_tsig_key.seed.key_name
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccTSIGKeyResourceAlgorithm(algo string) string {
 	keyName := fmt.Sprintf("acc-algo-%s.example.com", algo)
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_tsig_key" "algo" {
   key_name  = %q
   algorithm = %q
 }
-`, testAccAPIToken(), keyName, algo)
+`, keyName, algo)
 }

@@ -110,6 +110,13 @@ terraform-provider-technitium
 # Test data (persistent Docker volumes for acceptance tests)
 .testdata/
 
+# Acceptance-test TLS material (regenerated each test run by `make testacc-tls-prep`)
+testdata/tls/
+
+# Stray binary if a maintainer accidentally runs `go build ./tools/gen_test_tls`.
+# Root-anchored so the source subdirectory tools/gen_test_tls/ is NOT ignored.
+/gen_test_tls
+
 # Test secrets
 .env.test
 .env.*

@@ -4,7 +4,6 @@
 package provider
 
 import (
-	"fmt"
 	"regexp"
 	"testing"
 
@@ -70,12 +69,7 @@ func TestAccServerSettingsDataSource(t *testing.T) {
 }
 
 func testAccServerSettingsSTIG() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_server_settings" "main" {
   dnssec_validation  = true
   recursion          = "AllowOnlyForPrivateNetworks"
@@ -88,16 +82,11 @@ resource "technitium_server_settings" "main" {
   serve_stale        = true
   forwarder_protocol = "Tls"
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccServerSettingsCustom() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_server_settings" "main" {
   dnssec_validation  = true
   recursion          = "AllowOnlyForPrivateNetworks"
@@ -111,18 +100,13 @@ resource "technitium_server_settings" "main" {
   forwarder_protocol = "Https"
   udp_payload_size   = 1400
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccServerSettingsDataSource() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 data "technitium_server_settings" "current" {}
-`, testAccAPIToken())
+`
 }
 
 func TestAccServerSettingsResource_BlockingConfig(t *testing.T) {
@@ -164,28 +148,18 @@ func TestAccServerSettingsResource_BlockingTypeValidation(t *testing.T) {
 }
 
 func testAccServerSettingsBlocking() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-resource "technitium_server_settings" "main" {
+	return testAccProviderHCL() + `resource "technitium_server_settings" "main" {
   enable_blocking              = true
   allow_txt_blocking_report    = true
   blocking_type                = "NxDomain"
   blocking_answer_ttl          = 30
   block_list_update_interval_hours = 24
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccServerSettingsBlockingUpdate() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-resource "technitium_server_settings" "main" {
+	return testAccProviderHCL() + `resource "technitium_server_settings" "main" {
   enable_blocking              = true
   allow_txt_blocking_report    = true
   blocking_type                = "CustomAddress"
@@ -193,17 +167,12 @@ resource "technitium_server_settings" "main" {
   custom_blocking_addresses    = ["0.0.0.0", "::"]
   block_list_update_interval_hours = 24
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccServerSettingsBlockingInvalidType() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-resource "technitium_server_settings" "main" {
+	return testAccProviderHCL() + `resource "technitium_server_settings" "main" {
   blocking_type = "InvalidValue"
 }
-`, testAccAPIToken())
+`
 }

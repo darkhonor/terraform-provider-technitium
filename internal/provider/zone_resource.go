@@ -42,19 +42,19 @@ type ZoneResource struct {
 
 // ZoneResourceModel describes the resource data model.
 type ZoneResourceModel struct {
-	ID                   types.String       `tfsdk:"id"`
-	Name                 types.String       `tfsdk:"name"`
-	Type                 types.String       `tfsdk:"type"`
-	SOASerialDateScheme  types.Bool         `tfsdk:"soa_serial_date_scheme"`
-	Notify               types.List         `tfsdk:"notify"`
-	AllowTransfer        types.List         `tfsdk:"allow_transfer"`
-	DNSSEC               *DNSSECModel       `tfsdk:"dnssec"`
+	ID                             types.String `tfsdk:"id"`
+	Name                           types.String `tfsdk:"name"`
+	Type                           types.String `tfsdk:"type"`
+	SOASerialDateScheme            types.Bool   `tfsdk:"soa_serial_date_scheme"`
+	Notify                         types.List   `tfsdk:"notify"`
+	AllowTransfer                  types.List   `tfsdk:"allow_transfer"`
+	DNSSEC                         *DNSSECModel `tfsdk:"dnssec"`
 	ZoneTransferTsigKeyNames       types.List   `tfsdk:"zone_transfer_tsig_key_names"`
 	PrimaryZoneTransferTsigKeyName types.String `tfsdk:"primary_zone_transfer_tsig_key_name"`
 	// Computed
-	SOASerial            types.Int64        `tfsdk:"soa_serial"`
-	Status               types.String       `tfsdk:"status"`
-	DNSSECStatus         types.String       `tfsdk:"dnssec_status"`
+	SOASerial    types.Int64  `tfsdk:"soa_serial"`
+	Status       types.String `tfsdk:"status"`
+	DNSSECStatus types.String `tfsdk:"dnssec_status"`
 }
 
 // DNSSECModel maps the dnssec block.
@@ -397,6 +397,10 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
+// Delete removes a managed zone. If the underlying zone is already gone
+// (deleted out-of-band, or removed by another tool), the operation is
+// treated as success — destroy is idempotent. Same posture as
+// RecordResource.Delete and CatalogMembershipResource.Delete.
 func (r *ZoneResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state ZoneResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -404,7 +408,7 @@ func (r *ZoneResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	if err := r.client.ZoneDelete(ctx, state.Name.ValueString()); err != nil {
+	if err := r.client.ZoneDelete(ctx, state.Name.ValueString()); err != nil && !isRecordAlreadyGone(err) {
 		resp.Diagnostics.AddError("Error deleting zone", err.Error())
 	}
 }

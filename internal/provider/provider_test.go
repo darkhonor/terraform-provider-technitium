@@ -5,6 +5,9 @@ package provider
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"strings"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/provider"
@@ -16,6 +19,93 @@ import (
 // testAccProtoV6ProviderFactories is used by acceptance tests.
 var testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 	"technitium": providerserver.NewProtocol6WithError(New("test")()),
+}
+
+// testAccProviderHCL returns a `provider "technitium" { ... }` HCL block
+// suitable for use in acceptance test configurations. Values are taken from
+// environment variables so the same test config works against either the
+// default HTTP test container or the HTTPS-enabled one (`make testacc-up-tls`).
+//
+// Environment variables consulted:
+//
+//	TECHNITIUM_SERVER_URL  defaults to "http://127.0.0.1:5380"
+//	TECHNITIUM_CACERT      defaults to "" (ca_cert_file omitted from the block)
+//	TECHNITIUM_API_TOKEN   resolved by testAccAPIToken()
+//
+// Tests that need to assert on a SPECIFIC provider configuration (for example,
+// to test the provider's own behavior when given an HTTP URL or a self-signed
+// cert with skip_tls_verify) should NOT use this helper — they should write
+// their own provider block inline.
+func testAccProviderHCL() string {
+	return testAccProviderHCLWithExtras("")
+}
+
+// testAccProviderHCL_NSS returns an env-aware provider HCL block with NSS-mode
+// STIG compliance enabled and the supplied per-objective categorization.
+func testAccProviderHCL_NSS(confidentiality, integrity, availability string) string {
+	extras := fmt.Sprintf(`
+
+  stig_compliance {
+    enabled = true
+    nss     = true
+
+    categorization {
+      confidentiality = %q
+      integrity       = %q
+      availability    = %q
+    }
+  }`, confidentiality, integrity, availability)
+	return testAccProviderHCLWithExtras(extras)
+}
+
+// testAccProviderHCL_STIG returns an env-aware provider HCL block with non-NSS
+// STIG compliance enabled, parameterized by enforcement mode, suppression list
+// (any DNS-REQ-XXX IDs to suppress), and baseline.
+func testAccProviderHCL_STIG(enforcement string, suppress []string, baseline string) string {
+	extras := fmt.Sprintf(`
+
+  stig_compliance {
+    enabled     = true
+    enforcement = %q
+    suppress    = %s
+
+    categorization {
+      baseline = %q
+    }
+  }`, enforcement, formatSuppressList(suppress), baseline)
+	return testAccProviderHCLWithExtras(extras)
+}
+
+// formatSuppressList renders a string slice as an HCL list literal.
+// formatSuppressList(nil) and formatSuppressList([]string{}) both return "[]".
+func formatSuppressList(suppress []string) string {
+	if len(suppress) == 0 {
+		return "[]"
+	}
+	items := make([]string, len(suppress))
+	for i, s := range suppress {
+		items[i] = fmt.Sprintf("%q", s)
+	}
+	return "[" + strings.Join(items, ", ") + "]"
+}
+
+// testAccProviderHCLWithExtras is the common factory used by the public
+// helpers above. It assembles the env-aware provider block and appends any
+// supplied extra body (with the supplied indentation already applied).
+func testAccProviderHCLWithExtras(extras string) string {
+	serverURL := os.Getenv("TECHNITIUM_SERVER_URL")
+	if serverURL == "" {
+		serverURL = "http://127.0.0.1:5380"
+	}
+	caCertLine := ""
+	if ca := os.Getenv("TECHNITIUM_CACERT"); ca != "" {
+		caCertLine = fmt.Sprintf("\n  ca_cert_file = %q", ca)
+	}
+	return fmt.Sprintf(`provider "technitium" {
+  server_url = %q
+  api_token  = %q%s%s
+}
+`, serverURL, testAccAPIToken(), caCertLine, extras)
 }
 
 func TestProviderSchema_NoError(t *testing.T) {

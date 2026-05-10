@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/inputvalidation"
@@ -40,18 +41,18 @@ type RecordResource struct {
 }
 
 type RecordResourceModel struct {
-	ID       types.String `tfsdk:"id"`
-	Zone     types.String `tfsdk:"zone"`
-	Name     types.String `tfsdk:"name"`
-	Type     types.String `tfsdk:"type"`
-	TTL      types.Int64  `tfsdk:"ttl"`
-	Value    types.String `tfsdk:"value"`
-	Priority types.Int64  `tfsdk:"priority"`
-	Weight   types.Int64  `tfsdk:"weight"`
-	Port     types.Int64  `tfsdk:"port"`
-	CAAFlags types.Int64  `tfsdk:"caa_flags"`
-	CAATag   types.String `tfsdk:"caa_tag"`
-	Overwrite types.Bool  `tfsdk:"overwrite"`
+	ID        types.String `tfsdk:"id"`
+	Zone      types.String `tfsdk:"zone"`
+	Name      types.String `tfsdk:"name"`
+	Type      types.String `tfsdk:"type"`
+	TTL       types.Int64  `tfsdk:"ttl"`
+	Value     types.String `tfsdk:"value"`
+	Priority  types.Int64  `tfsdk:"priority"`
+	Weight    types.Int64  `tfsdk:"weight"`
+	Port      types.Int64  `tfsdk:"port"`
+	CAAFlags  types.Int64  `tfsdk:"caa_flags"`
+	CAATag    types.String `tfsdk:"caa_tag"`
+	Overwrite types.Bool   `tfsdk:"overwrite"`
 	// Computed
 	LastModified types.String `tfsdk:"last_modified"`
 }
@@ -295,6 +296,9 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
 
+// Delete removes a managed DNS record. If the underlying record is already
+// gone (deleted out-of-band, or the parent zone destroyed independently),
+// the operation is treated as success — destroy is idempotent.
 func (r *RecordResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var state RecordResourceModel
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
@@ -309,9 +313,26 @@ func (r *RecordResource) Delete(ctx context.Context, req resource.DeleteRequest,
 		state.Type.ValueString(),
 		params,
 	)
-	if err != nil {
+	if err != nil && !isRecordAlreadyGone(err) {
 		resp.Diagnostics.AddError("Error deleting record", err.Error())
 	}
+}
+
+// isRecordAlreadyGone returns true when an error from RecordDelete indicates
+// that the record (or its parent zone) is no longer present on the server,
+// so the destroy should be treated as already-complete. Technitium's API
+// returns these as generic-status APIErrors with English error text rather
+// than a typed "not_found" status, so the match is on substring.
+func isRecordAlreadyGone(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "no such record exists") ||
+		strings.Contains(msg, "no such zone") ||
+		strings.Contains(msg, "zone does not exist") ||
+		strings.Contains(msg, "zone was not found") ||
+		strings.Contains(msg, "zone not found")
 }
 
 func (r *RecordResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {

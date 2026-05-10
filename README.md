@@ -221,6 +221,42 @@ make testacc-down
 > fresh API token, and runs every acceptance test. Unit tests (`make test`) do not require
 > Docker and run entirely offline.
 
+#### TLS-mode acceptance suite
+
+The default `make testacc-up` runs the Technitium container with HTTP only on port `5380`,
+which is sufficient for most resource and data-source tests but blocks the NSS-mode and
+strict STIG-mode test families that require encrypted transport (DNS-REQ-028 / NIST SC-8).
+
+The parallel `testacc-up-tls` target boots an HTTPS-enabled container and runs the full
+test suite against it:
+
+```bash
+make testacc-up-tls   # generate fresh CA + server cert, boot HTTPS container, run all tests
+make testacc-down-tls # tear down the HTTPS container when finished
+```
+
+The TLS variant generates a fresh ECDSA P-384 self-signed CA and server certificate into
+`./testdata/tls/` (gitignored), packages the server credentials as a PKCS#12 bundle,
+mounts them into the Technitium container at `/etc/dns/tls/server.pfx`, and exposes the
+admin web service on `127.0.0.1:5443` over HTTPS. The provider trusts the test CA via the
+`TECHNITIUM_CACERT` environment variable. No private key material is ever committed.
+
+A few test helpers and direct-API helpers across the suite still hardcode the HTTP URL
+where they exist purely to test HTTP-failure or skip-TLS-verify behavior; those tests
+intentionally do not pick up the TLS overrides. The TLS path's primary value is unblocking
+the NSS-mode and STIG-strict test families that cannot run under HTTP at all.
+
+The TLS target sources `DNS_ADMIN_PASSWORD` from `.env.test` (falling back to `admin` to
+match `.env.test.example`). It does not require any production credential.
+
+> **Known limitation:** the make targets currently pass the admin password and per-run API
+> token to `curl` as URL query parameters, which exposes them in local process listings
+> while curl is running. This is a side channel and is being tracked in
+> [#35](https://github.com/darkhonor/terraform-provider-technitium/issues/35); fix is to
+> move the credentials into the request body or a curl config file.
+
+CI runs `testacc-up-tls` automatically on every pull request.
+
 ### FIPS Build
 
 Build with BoringCrypto for FIPS 140-2 compliance:

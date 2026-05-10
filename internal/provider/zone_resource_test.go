@@ -167,12 +167,7 @@ func TestAccZoneResource_PrimaryTsigKeyOnPrimaryZone_Rejected(t *testing.T) {
 }
 
 func testAccZoneResourcePrimaryTsigOnPrimary() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_zone" "bad" {
   name = "acc-bad-primary-tsig.example.com"
   type = "Primary"
@@ -183,7 +178,7 @@ resource "technitium_zone" "bad" {
     enabled = false
   }
 }
-`, testAccAPIToken())
+`
 }
 
 func TestAccZoneResource_ZoneTransferTsigKeys_OnStub_Rejected(t *testing.T) {
@@ -199,19 +194,14 @@ func TestAccZoneResource_ZoneTransferTsigKeys_OnStub_Rejected(t *testing.T) {
 }
 
 func testAccZoneResourceTsigKeysOnStub() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_zone" "bad" {
   name = "acc-bad-stub-tsig.example.com"
   type = "Stub"
 
   zone_transfer_tsig_key_names = ["some-key"]
 }
-`, testAccAPIToken())
+`
 }
 
 func TestAccZoneResource_TsigKeyNotFound_Rejected(t *testing.T) {
@@ -227,12 +217,7 @@ func TestAccZoneResource_TsigKeyNotFound_Rejected(t *testing.T) {
 }
 
 func testAccZoneResourceTsigKeyNotFound() string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + `
 resource "technitium_zone" "bad" {
   name = "acc-bad-notfound-tsig.example.com"
   type = "Primary"
@@ -243,16 +228,11 @@ resource "technitium_zone" "bad" {
     enabled = false
   }
 }
-`, testAccAPIToken())
+`
 }
 
 func testAccZoneResourceWithTsigKeys(zoneName string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_tsig_key" "xfer" {
   key_name  = "acc-xfer-key.example.com"
   algorithm = "hmac-sha256"
@@ -268,16 +248,11 @@ resource "technitium_zone" "tsig" {
     enabled = false
   }
 }
-`, testAccAPIToken(), zoneName)
+`, zoneName)
 }
 
 func testAccZoneResourceNoTsigKeys(zoneName string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_tsig_key" "xfer" {
   key_name  = "acc-xfer-key.example.com"
   algorithm = "hmac-sha256"
@@ -293,27 +268,11 @@ resource "technitium_zone" "tsig" {
     enabled = false
   }
 }
-`, testAccAPIToken(), zoneName)
+`, zoneName)
 }
 
 func testAccZoneResourceNSSP256(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-
-  stig_compliance {
-    enabled = true
-    nss     = true
-
-    categorization {
-      confidentiality = "high"
-      integrity       = "high"
-      availability    = "moderate"
-    }
-  }
-}
-
+	return testAccProviderHCL_NSS("high", "high", "moderate") + fmt.Sprintf(`
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
@@ -325,27 +284,11 @@ resource "technitium_zone" "nss" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 func testAccZoneResourceNSSP384(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-
-  stig_compliance {
-    enabled = true
-    nss     = true
-
-    categorization {
-      confidentiality = "high"
-      integrity       = "high"
-      availability    = "moderate"
-    }
-  }
-}
-
+	return testAccProviderHCL_NSS("high", "high", "moderate") + fmt.Sprintf(`
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
@@ -357,16 +300,11 @@ resource "technitium_zone" "nss" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 func testAccZoneResourceNonNSSP256(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_zone" "nonnss" {
   name = %q
   type = "Primary"
@@ -378,16 +316,11 @@ resource "technitium_zone" "nonnss" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 func testAccZoneResourceConfig(name, zoneType string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_zone" "test" {
   name = %q
   type = %q
@@ -401,16 +334,11 @@ resource "technitium_zone" "test" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), name, zoneType)
+`, name, zoneType)
 }
 
 func testAccZoneResourceNoDNSSEC(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_zone" "unsigned" {
   name = %q
   type = "Primary"
@@ -419,16 +347,11 @@ resource "technitium_zone" "unsigned" {
     enabled = false
   }
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 func testAccZoneDataSourceConfig(name string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
-
+	return testAccProviderHCL() + fmt.Sprintf(`
 resource "technitium_zone" "seed" {
   name = %q
   type = "Primary"
@@ -441,7 +364,7 @@ resource "technitium_zone" "seed" {
 data "technitium_zone" "test" {
   name = technitium_zone.seed.name
 }
-`, testAccAPIToken(), name)
+`, name)
 }
 
 // testAccDirectClient creates a direct API client for test setup operations
@@ -458,23 +381,7 @@ func testAccDirectClient(t *testing.T) *client.Client {
 // testAccZoneResourceNSSTsigKey creates both a TSIG key and zone with NSS enabled.
 // Only works for NSS-compliant algorithms (sha256, sha384, sha512).
 func testAccZoneResourceNSSTsigKey(zoneName, keyName, algo string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-
-  stig_compliance {
-    enabled = true
-    nss     = true
-
-    categorization {
-      confidentiality = "high"
-      integrity       = "high"
-      availability    = "moderate"
-    }
-  }
-}
-
+	return testAccProviderHCL_NSS("high", "high", "moderate") + fmt.Sprintf(`
 resource "technitium_tsig_key" "test" {
   key_name  = %q
   algorithm = %q
@@ -493,29 +400,13 @@ resource "technitium_zone" "nss" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), keyName, algo, zoneName)
+`, keyName, algo, zoneName)
 }
 
 // testAccZoneOnlyNSSReferencingKey creates ONLY a zone (not the key) with NSS enabled,
 // referencing a pre-existing TSIG key by name string literal.
 func testAccZoneOnlyNSSReferencingKey(zoneName, keyName string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-
-  stig_compliance {
-    enabled = true
-    nss     = true
-
-    categorization {
-      confidentiality = "high"
-      integrity       = "high"
-      availability    = "moderate"
-    }
-  }
-}
-
+	return testAccProviderHCL_NSS("high", "high", "moderate") + fmt.Sprintf(`
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
@@ -529,7 +420,7 @@ resource "technitium_zone" "nss" {
     nx_proof  = "NSEC3"
   }
 }
-`, testAccAPIToken(), zoneName, keyName)
+`, zoneName, keyName)
 }
 
 func TestAccZoneResource_NSS_TsigKeyCompliant_sha256(t *testing.T) {

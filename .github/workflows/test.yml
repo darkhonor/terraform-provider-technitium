@@ -71,3 +71,28 @@ jobs:
         run: go install github.com/securego/gosec/v2/cmd/gosec@v2.25.0
       - name: Run gosec
         run: gosec -exclude=G304 ./...
+
+  acceptance-tls:
+    name: Acceptance Tests (TLS)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: "1.26"
+
+      # docker-compose.test.yml uses env_file: .env.test for the container's
+      # admin password. CI does not commit .env.test (it is gitignored), so
+      # bootstrap a stub from the example. The TLS acceptance path overrides
+      # TECHNITIUM_* vars inline at test invocation time and never reads
+      # .env.test for those values.
+      - name: Bootstrap stub .env.test for docker-compose env_file
+        run: cp .env.test.example .env.test
+
+      - name: Run TLS-mode acceptance suite
+        run: make testacc-up-tls
+
+      - name: Tear down test container
+        if: always()
+        run: make testacc-down-tls
