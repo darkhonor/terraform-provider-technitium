@@ -56,7 +56,7 @@ and call out STIG / NIST 800-53 implications when applicable.
 
 ### Prerequisites
 
-- [Go](https://go.dev/) >= 1.26
+- [Go](https://go.dev/) >= 1.26.3 (matches the `go` directive in `go.mod`)
 - [Docker](https://www.docker.com/) (for acceptance tests)
 - [Terraform CLI](https://developer.hashicorp.com/terraform/install) (used by `terraform-plugin-testing`)
 - GNU Make
@@ -150,6 +150,7 @@ Signed commits are not required.
 - `feature/issue-NN-short-slug` for new features
 - `fix/issue-NN-short-slug` for bug fixes
 - `docs/issue-NN-short-slug` for documentation
+- `security/short-slug` for supply-chain or hardening changes
 - `chore/short-slug` for renovate-bot, build, or non-functional changes
 
 If an issue number is not available, omit the `issue-NN` segment.
@@ -214,8 +215,13 @@ Cursor, Aider, etc.) to materially contribute to a commit, add a
 trail explicit without favoring any particular provider:
 
 ```
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: <Tool Name> <noreply@<vendor>.com>
 ```
 
-Pick the email the tool's documentation recommends, or use
-`noreply@<vendor>.com` if none is given.
+Pick the email the tool's documentation recommends, or use the vendor's
+`noreply@` address if none is given. Examples (illustrative, not
+prescriptive):
+
+- `Co-Authored-By: GitHub Copilot <noreply@github.com>`
+- `Co-Authored-By: Cursor <noreply@cursor.sh>`
+- `Co-Authored-By: Claude Code <noreply@anthropic.com>`

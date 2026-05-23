@@ -48,6 +48,7 @@ body:
       label: OS / platform
       description: Where the Terraform CLI is running, not where the DNS server is running.
       options:
+        - Not sure
         - Linux
         - macOS
         - Windows
