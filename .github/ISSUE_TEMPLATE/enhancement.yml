@@ -1,0 +1,106 @@
+name: Enhancement
+description: Suggest a new feature, capability, or improvement.
+title: "enhancement: "
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to suggest an enhancement. Whether
+        this is a homelab quality-of-life request or a production /
+        compliance-driven feature, both contexts are welcome and both
+        shape the eventual design.
+
+  - type: input
+    id: summary
+    attributes:
+      label: Summary
+      description: One sentence describing the enhancement.
+      placeholder: "Expose the catalog_membership override flags on the resource"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / use case
+      description: |
+        What are you trying to do? Why does the current provider make
+        it hard or impossible? Homelab or production context welcome --
+        both shape design.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would the ideal behavior look like? Sketch of HCL is helpful when relevant.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches you weighed and why you set them aside.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: surface
+    attributes:
+      label: Affected surface
+      description: Where in the provider this lands. Skip if unsure.
+      options:
+        - label: Resource (new resource or new fields on an existing one)
+        - label: Data source
+        - label: Provider configuration
+        - label: STIG validator
+        - label: Documentation
+        - label: Test infrastructure
+        - label: CI / build
+    validations:
+      required: false
+
+  - type: textarea
+    id: api-endpoints
+    attributes:
+      label: Technitium API endpoints involved
+      description: |
+        If the feature depends on specific Technitium API endpoints,
+        link the relevant section of [APIDOCS.md](https://github.com/TechnitiumSoftware/DnsServer/blob/master/APIDOCS.md).
+    validations:
+      required: false
+
+  - type: textarea
+    id: stig-impact
+    attributes:
+      label: STIG / NIST 800-53 impact
+      description: |
+        Does this touch a DNS-REQ-NNN requirement? Does it need a new
+        control mapping? Leave blank for ergonomics-only or homelab
+        quality-of-life requests.
+    validations:
+      required: false
+
+  - type: dropdown
+    id: backwards-compat
+    attributes:
+      label: Backwards-compatibility
+      description: How the change affects existing users.
+      options:
+        - Not sure
+        - Fully compatible (additive only)
+        - Behind a new field with safe default
+        - Breaking -- requires major-version bump
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing open and closed issues and did not find a duplicate.
+          required: true
