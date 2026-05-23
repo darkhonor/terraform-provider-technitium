@@ -13,9 +13,9 @@ recursive resolution, DNSSEC, DNS-over-HTTPS/TLS, blocking, and much more — ma
 excellent choice for production DNS infrastructure.
 
 This provider enables you to manage Technitium DNS Server infrastructure entirely as code
-through Terraform. Define zones, records, TSIG keys, DNSSEC configuration, and server-wide
-settings in declarative HCL, then plan, review, and apply changes with the same workflow you
-use for every other piece of your infrastructure.
+through Terraform. Define zones, records, TSIG keys, DNSSEC configuration, catalog zone
+membership, and server-wide settings in declarative HCL, then plan, review, and apply
+changes with the same workflow you use for every other piece of your infrastructure.
 
 What sets this provider apart is its embedded [DISA STIG](https://www.cyber.mil/stigs)
 compliance validation with full [NIST SP 800-53 Rev. 5](https://csrc.nist.gov/pubs/sp/800-53/r5/upd1/final)
@@ -29,12 +29,29 @@ and `terraform plan` time, catching misconfigurations before they reach your DNS
 | [BIND 9.x STIG](https://www.cyber.mil/stigs) | V3R1 | 2025-07-14 |
 | [Windows Server 2022 DNS STIG](https://www.cyber.mil/stigs) | V2R3 | 2025-04-02 |
 
+## Why use Terraform with Technitium?
+
+**Already managing infrastructure as code?** Define your DNS zones, records, DNSSEC,
+TSIG keys, and server-wide settings alongside the rest of your stack — Kubernetes manifests,
+cloud resources, container deployments — in the same `terraform apply` lifecycle.
+
+**New to infrastructure as code?** The embedded STIG validators catch DNS misconfigurations
+at `terraform plan` time, before they reach your server. Each finding includes the STIG
+Rule ID, severity, and mapped NIST SP 800-53 control — you see the problem with the fix
+attached, not after the next audit.
+
+**Running multiple Technitium nodes?** The `technitium_catalog_membership` resource
+(new in v1.2) declaratively manages [RFC 9432](https://datatracker.ietf.org/doc/rfc9432/)
+catalog zone membership so secondary name servers automatically provision member zones —
+no per-secondary manual configuration.
+
 ## Features
 
 - DNS zone management (Primary, Secondary, Stub, Forwarder)
 - DNS record management (A, AAAA, CNAME, MX, TXT, SRV, PTR, NS, CAA) with multi-record support for round-robin, multiple MX exchanges, and other multi-value configurations
 - DNSSEC signing configuration
 - TSIG key management for authenticated zone transfers
+- **Catalog zone membership ([RFC 9432](https://datatracker.ietf.org/doc/rfc9432/)) for multi-server deployments**
 - Server-wide DNS settings
 - Domain blocking and allowing
 - Built-in DISA STIG compliance validation (28 DNS security requirements)
@@ -45,26 +62,81 @@ and `terraform plan` time, catching misconfigurations before they reach your DNS
 
 ## Quick Start
 
-Configure the provider, create a zone, and add a record:
+### Homelab quick start
+
+Running Technitium on your home network over HTTP, just want IaC-managed records?
+Start here. Findings show in plan output but do not block `apply` until you decide
+to harden:
 
 ```hcl
 terraform {
   required_providers {
     technitium = {
       source  = "darkhonor/technitium"
-      version = "~> 1.0"
+      version = "~> 1.2"
     }
   }
 }
 
 provider "technitium" {
+  server_url = "http://192.168.1.10:5380"
+  api_token  = var.technitium_api_token
+
+  stig_compliance {
+    enabled     = true
+    enforcement = "warn" # findings appear in plan output but do not block apply
+  }
+}
+
+resource "technitium_zone" "homelab" {
+  name = "home.lan"
+  type = "Primary"
+}
+
+resource "technitium_record" "nas" {
+  zone  = technitium_zone.homelab.name
+  name  = "nas.home.lan"
+  type  = "A"
+  value = "192.168.1.50"
+}
+```
+
+When you're ready to harden — add `notify`, `allow_transfer`, DNSSEC, switch to
+HTTPS, and drop the `enforcement = "warn"` line. The findings you saw earlier
+become the checklist.
+
+### Production / hardened deployment
+
+HTTPS-enabled Technitium, strict STIG enforcement, custom CA for an internal PKI:
+
+```hcl
+provider "technitium" {
   server_url = "https://dns.example.com"
   api_token  = var.technitium_api_token
+
+  ca_cert_file    = "/etc/ssl/certs/internal-ca.pem"
+  tls_server_name = "dns.example.com"
+  tls_min_version = "1.3"
+
+  # strict mode is the default — included here for clarity
+  stig_compliance {
+    enabled     = true
+    enforcement = "strict"
+  }
 }
 
 resource "technitium_zone" "example" {
-  name = "example.com"
-  type = "Primary"
+  name           = "example.com"
+  type           = "Primary"
+  notify         = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
+
+  dnssec {
+    enabled   = true
+    algorithm = "ECDSA"
+    curve     = "P384"
+    nx_proof  = "NSEC3"
+  }
 }
 
 resource "technitium_record" "web" {
@@ -75,8 +147,10 @@ resource "technitium_record" "web" {
 }
 ```
 
-Multiple records at the same name and type are fully supported — set `overwrite = false` to
-manage individual records within an RRset:
+### Multi-record support
+
+Multiple records at the same name and type are fully supported — set `overwrite = false`
+to manage individual records within an RRset:
 
 ```hcl
 resource "technitium_record" "web1" {
@@ -96,6 +170,8 @@ resource "technitium_record" "web2" {
 }
 ```
 
+### Environment variable fallback
+
 The provider can also be configured using environment variables:
 
 ```bash
@@ -103,18 +179,30 @@ export TECHNITIUM_SERVER_URL="https://dns.example.com"
 export TECHNITIUM_API_TOKEN="your-api-token"
 ```
 
-For private or custom CA-issued certificates, the provider supports the following TLS options:
+## Why this provider vs. the generic `hashicorp/dns` provider?
 
-```hcl
-provider "technitium" {
-  server_url      = "https://dns.example.com"
-  api_token       = var.technitium_api_token
+Both providers can add DNS records to Technitium, but they take fundamentally different
+paths. `hashicorp/dns` speaks generic [RFC 2136](https://datatracker.ietf.org/doc/rfc2136/)
+dynamic updates over TSIG — the same protocol Bind 9 uses — and works against any
+DNS server that supports it. `darkhonor/technitium` talks directly to Technitium's
+native HTTP API and exposes the full administrative surface, not just the records subset.
 
-  ca_cert_file    = "/etc/ssl/certs/internal-ca.pem"
-  tls_server_name = "dns.example.com"
-  tls_min_version = "1.3"
-}
-```
+| Capability | `hashicorp/dns` (RFC 2136) | `darkhonor/technitium` |
+|---|---|---|
+| Manage DNS records | yes, via TSIG dynamic updates | yes, via native API |
+| Create + configure zones | no (must create in web UI first) | yes (`technitium_zone`) |
+| DNSSEC configuration | no | yes (algorithm, curve, NSEC3) |
+| TSIG key lifecycle | no (configure manually) | yes (`technitium_tsig_key`) |
+| Catalog zone membership ([RFC 9432](https://datatracker.ietf.org/doc/rfc9432/)) | no | yes (`technitium_catalog_membership`) |
+| Server-wide settings, blocking, recursion | no | yes (`technitium_server_settings`) |
+| Authentication model | shared TSIG secret per provider config | per-user API token, revocable, scoped |
+| Embedded STIG compliance validation | no | yes (28 DNS security requirements) |
+| DNS-over-HTTPS provider transport | no (TSIG over UDP/TCP) | yes |
+
+If you only need to add records to an existing zone and you're already running a
+mixed-DNS-server environment, `hashicorp/dns` is fine. If you want to manage Technitium
+end-to-end — including the zones, DNSSEC posture, TSIG keys, catalog membership, and
+server settings — this provider is the one designed for that.
 
 ## STIG Compliance
 
@@ -131,10 +219,20 @@ Three enforcement modes are available:
 | **warn** | Warnings appear in plan output but do not block |
 | **silent** | All STIG diagnostics suppressed |
 
+If you do not need compliance enforcement on a specific deployment, set
+`enforcement = "warn"` to see findings without blocking, or `enforcement = "silent"`
+to suppress them entirely. The validators run only when `stig_compliance.enabled = true`.
+
 For classified environments, NSS mode maps controls to
 [CNSSI 1253](https://www.cnss.gov/CNSS/issuances/Instructions.cfm) baselines (Low,
 Moderate, High) and enforces only the requirements applicable to the selected
 categorization level.
+
+> **Upgrading from v1.1.x?** Two STIG validators (DNS-REQ-004 zone-transfer ACL,
+> DNS-REQ-016 notify addresses) were silently no-op in v1.0 and v1.1 and now
+> properly enforce. Strict-mode users running existing HCL without `notify` or
+> `allow_transfer` populated will see new findings on `terraform plan`. See the
+> [CHANGELOG Upgrade Notes](CHANGELOG.md) for remediation paths.
 
 For full details, see the [STIG Compliance Guide](docs/guides/stig-compliance.md) and
 the [DISA STIG Library](https://www.cyber.mil/stigs).
@@ -156,7 +254,7 @@ terraform {
   required_providers {
     technitium = {
       source  = "darkhonor/technitium"
-      version = "~> 1.0"
+      version = "~> 1.2"
     }
   }
 }
@@ -178,6 +276,8 @@ make install
 
 - [Terraform Registry Documentation](https://registry.terraform.io/providers/darkhonor/technitium/latest/docs)
 - [STIG Compliance Guide](docs/guides/stig-compliance.md)
+- [Changelog](CHANGELOG.md)
+- [Security policy](.github/SECURITY.md)
 
 ## Development
 
