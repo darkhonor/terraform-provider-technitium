@@ -276,6 +276,8 @@ func testAccZoneResourceNSSP256(name string) string {
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   dnssec {
     enabled   = true
@@ -292,6 +294,8 @@ func testAccZoneResourceNSSP384(name string) string {
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   dnssec {
     enabled   = true
@@ -390,6 +394,8 @@ resource "technitium_tsig_key" "test" {
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   zone_transfer_tsig_key_names = [technitium_tsig_key.test.key_name]
 
@@ -410,6 +416,8 @@ func testAccZoneOnlyNSSReferencingKey(zoneName, keyName string) string {
 resource "technitium_zone" "nss" {
   name = %q
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   zone_transfer_tsig_key_names = [%q]
 

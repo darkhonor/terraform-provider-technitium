@@ -31,7 +31,7 @@ var ZoneBindings = []ValidatorBinding{
 	{
 		RequirementID: "DNS-REQ-004",
 		Resource:      ResourceZone,
-		Attributes:    []string{"zone_transfer_allowed_networks"},
+		Attributes:    []string{"allow_transfer"},
 		Implemented:   true,
 		StatelessFn:   validateZoneTransferNetworks,
 	},
@@ -52,7 +52,7 @@ var ZoneBindings = []ValidatorBinding{
 	{
 		RequirementID: "DNS-REQ-016",
 		Resource:      ResourceZone,
-		Attributes:    []string{"notify_addresses"},
+		Attributes:    []string{"notify"},
 		Implemented:   true,
 		StatelessFn:   validateZoneNotifyAddresses,
 	},
@@ -372,9 +372,9 @@ func validateZoneTSIGKeyNames(_ context.Context, plan PlanAccessor, _ StateAcces
 // validateZoneTransferNetworks checks that zone transfer is restricted to an
 // explicit set of authorized networks (DNS-REQ-004).
 func validateZoneTransferNetworks(ctx context.Context, config ConfigAccessor) bool {
-	networks, ok := config.GetStringList("zone_transfer_allowed_networks")
+	networks, ok := config.GetStringList("allow_transfer")
 	if !ok {
-		return config.IsUnknown("zone_transfer_allowed_networks")
+		return config.IsUnknown("allow_transfer")
 	}
 	return len(networks) > 0
 }
@@ -402,9 +402,9 @@ func validateFIPSCrypto(ctx context.Context, config ConfigAccessor) bool {
 // validateZoneNotifyAddresses checks that notify addresses are configured on
 // the zone so authorized secondaries are informed of changes (DNS-REQ-016 zone).
 func validateZoneNotifyAddresses(ctx context.Context, config ConfigAccessor) bool {
-	addrs, ok := config.GetStringList("notify_addresses")
+	addrs, ok := config.GetStringList("notify")
 	if !ok {
-		return config.IsUnknown("notify_addresses")
+		return config.IsUnknown("notify")
 	}
 	return len(addrs) > 0
 }

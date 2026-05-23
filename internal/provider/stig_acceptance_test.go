@@ -112,6 +112,8 @@ func TestAccSTIG_Suppress_DNSSECReq_PlanSucceeds(t *testing.T) {
 resource "technitium_zone" "test" {
   name = "stig-test-suppress.example.com"
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   dnssec {
     enabled = false
@@ -129,11 +131,10 @@ resource "technitium_zone" "test" {
 // enforcement without error. The implicit assertion is that any HIGH-only
 // requirement is correctly skipped at LOW.
 //
-// DNS-REQ-002 (TSIG keys), DNS-REQ-004 (zone transfer ACL), and DNS-REQ-016
-// (notify addresses) are suppressed because the corresponding zone-resource
-// schema attributes are not yet exposed in this provider — the validators
-// reference paths that the schema does not satisfy. Tracked in
-// https://github.com/darkhonor/terraform-provider-technitium/issues/37 .
+// DNS-REQ-002 is suppressed because TSIG keys are a server-scoped construct
+// (stateful), not zone-scoped — out of scope for this static-zone acceptance
+// test. Suppression here is honest: the control is structurally inapplicable
+// to this fixture, not just inconveniently failing.
 func TestAccSTIG_LowBaseline_HighControlNotChecked(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -141,12 +142,14 @@ func TestAccSTIG_LowBaseline_HighControlNotChecked(t *testing.T) {
 			{
 				Config: testAccSTIGProviderConfig(
 					"strict",
-					[]string{"DNS-REQ-002", "DNS-REQ-004", "DNS-REQ-016"},
+					[]string{"DNS-REQ-002"},
 					"low",
 				) + `
 resource "technitium_zone" "test" {
   name = "stig-test-low-baseline.example.com"
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   dnssec {
     enabled   = true
@@ -156,18 +159,15 @@ resource "technitium_zone" "test" {
   }
 }
 `,
-				// No error — DNSSEC validators are satisfied; the suppressed
-				// requirements correspond to zone attributes the provider
-				// schema does not yet expose.
+				// No error — LOW-baseline static zone validators are satisfied.
 			},
 		},
 	})
 }
 
 // TestAccSTIG_Strict_FullyCompliant_PlanSucceeds verifies that a zone with
-// DNSSEC fully configured (enabled, FIPS algorithm, NSEC3) passes strict
-// enforcement at the LOW baseline. DNS-REQ-002, DNS-REQ-004, and DNS-REQ-016
-// are suppressed for the same reason as in
+// DNSSEC, notify, and transfer ACLs configured passes strict enforcement at
+// the LOW baseline. DNS-REQ-002 is suppressed for the same reason as in
 // TestAccSTIG_LowBaseline_HighControlNotChecked.
 func TestAccSTIG_Strict_FullyCompliant_PlanSucceeds(t *testing.T) {
 	resource.Test(t, resource.TestCase{
@@ -176,12 +176,14 @@ func TestAccSTIG_Strict_FullyCompliant_PlanSucceeds(t *testing.T) {
 			{
 				Config: testAccSTIGProviderConfig(
 					"strict",
-					[]string{"DNS-REQ-002", "DNS-REQ-004", "DNS-REQ-016"},
+					[]string{"DNS-REQ-002"},
 					"low",
 				) + `
 resource "technitium_zone" "test" {
   name = "stig-test-compliant.example.com"
   type = "Primary"
+  notify = ["10.0.0.2"]
+  allow_transfer = ["10.0.0.0/8"]
 
   dnssec {
     enabled   = true

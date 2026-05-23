@@ -30,7 +30,7 @@ func TestZoneValidators(t *testing.T) {
 	RunValidatorTests(t, ValidatorTestCase{
 		Name:            "DNS-REQ-004 zone transfer networks",
 		Fn:              validateZoneTransferNetworks,
-		Attribute:       "zone_transfer_allowed_networks",
+		Attribute:       "allow_transfer",
 		CompliantVal:    []string{"10.0.0.0/8"},
 		NonCompliantVal: []string{},
 	})
@@ -57,7 +57,7 @@ func TestZoneValidators(t *testing.T) {
 	RunValidatorTests(t, ValidatorTestCase{
 		Name:            "DNS-REQ-016 zone notify addresses",
 		Fn:              validateZoneNotifyAddresses,
-		Attribute:       "notify_addresses",
+		Attribute:       "notify",
 		CompliantVal:    []string{"10.0.0.2"},
 		NonCompliantVal: []string{},
 	})

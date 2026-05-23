@@ -15,16 +15,6 @@ import (
 // Engine integration tests — real schema + real adapter + real bindings
 // These tests would have caught the default-allow bug (GitHub #8).
 //
-// KNOWN ATTRIBUTE PATH MISMATCHES (pre-existing production bugs):
-// The zone bindings in stig.go use different attribute paths than the
-// actual zone schema in zone_resource.go:
-//   - Binding: "notify_addresses"    → Schema: "notify"
-//   - Binding: "zone_transfer_allowed_networks" → Schema: "allow_transfer"
-//
-// TODO: File a separate issue to align binding paths with schema paths.
-// Integration tests that exercise these bindings will see them as
-// "unknown" (path not found in real config), which passes validation.
-// This is the integration tests doing their job — surfacing the mismatch.
 // ---------------------------------------------------------------------------
 
 func TestIntegration_ZoneWithoutDNSSEC_TriggersFindings(t *testing.T) {
@@ -52,16 +42,16 @@ func TestIntegration_ZoneWithoutDNSSEC_TriggersFindings(t *testing.T) {
 		t.Fatal("expected errors for zone without dnssec block")
 	}
 
-	// Count errors — expect at least DNS-REQ-001, DNS-REQ-011, DNS-REQ-012
-	// (DNS-REQ-004 and DNS-REQ-016 use mismatched paths so they pass as "unknown")
+	// Count errors — expect at least DNS-REQ-001, DNS-REQ-004, DNS-REQ-011,
+	// DNS-REQ-012, and DNS-REQ-016.
 	errorCount := 0
 	for _, d := range diags {
 		if d.Severity() == diag.SeverityError {
 			errorCount++
 		}
 	}
-	if errorCount < 3 {
-		t.Errorf("expected at least 3 error diagnostics, got %d", errorCount)
+	if errorCount < 5 {
+		t.Errorf("expected at least 5 error diagnostics, got %d", errorCount)
 	}
 }
 
