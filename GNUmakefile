@@ -1,5 +1,32 @@
 default: build
 
+# Container runs as the host user (UID/GID resolved at runtime) so that
+# bind-mounted test material is read/writable without root or chown
+# gymnastics. Defaults match the typical Linux user; CI runners (e.g.
+# GitHub Actions UID 1001) will pick up their own UID via these exports.
+# See docker-compose.test.yml and issue #36.
+export HOST_UID := $(shell id -u)
+export HOST_GID := $(shell id -g)
+
+# Preflight: if ./.testdata (or anything beneath it that we use as a bind
+# mount source) exists but contains paths not writable by the current
+# user, it is almost certainly leftover from a pre-#36 root-container
+# test run. Fail with a clear remediation instead of letting the
+# downstream `mkdir -p` or container startup fail in a less obvious way.
+# The recursive find catches the case where ./.testdata itself is fine
+# but ./.testdata/dns-data/<subpath> has root-owned files.
+.PHONY: _testdata-preflight
+_testdata-preflight:
+	@if [ -e ./.testdata ] && find ./.testdata -not -writable -print -quit 2>/dev/null | grep -q .; then \
+		echo "ERROR: ./.testdata contains paths not writable by UID $$(id -u)."; \
+		echo "This usually means stale root-owned files from an older root-container test run."; \
+		echo "Offending path(s):"; \
+		find ./.testdata -not -writable -print 2>/dev/null | sed 's/^/  /'; \
+		echo "Remove all with (no sudo needed):"; \
+		echo "  docker run --rm -v \"\$$(pwd):/wipe\" alpine:latest rm -rf /wipe/.testdata"; \
+		exit 1; \
+	fi
+
 build:
 	go build -v ./...
 
@@ -13,26 +40,49 @@ test-fips:
 	GOEXPERIMENT=boringcrypto go test -v ./... -count=1
 
 testacc:
-	@test -f .env.test && export $$(grep -v '^#' .env.test | xargs) || true; \
+	@# Allow-list export from .env.test: each line is parsed individually
+	@# and the key is regex-validated as ^TECHNITIUM_[A-Z0-9_]+$$. Lines
+	@# whose KEY does not pass are skipped entirely. This is stricter than
+	@# the previous `grep ... | xargs` approach, which could be subverted
+	@# by a line like "TECHNITIUM_FOO=x DNS_ADMIN_PASSWORD=y" -- xargs
+	@# would split it into two separate VAR=VAL pairs and export both.
+	@# Secrets like DNS_ADMIN_PASSWORD are needed only by token bootstrap
+	@# and never enter the long-running `go test` environment (issue #35).
+	@set +x; \
+	if [ -f .env.test ]; then \
+		while IFS='=' read -r _k _v; do \
+			case "$$_k" in ''|\#*) continue ;; esac; \
+			if printf '%s' "$$_k" | grep -qE '^TECHNITIUM_[A-Z0-9_]+$$'; then \
+				export "$$_k=$$_v"; \
+			fi; \
+		done < .env.test; \
+	fi; \
 	TF_ACC=1 go test -v ./... -count=1 -timeout 120m
 
 testacc-token:
 	@echo "Provisioning fresh Technitium API token..."
-	@TOKEN=$$(curl -sf "http://127.0.0.1:5380/api/user/login?user=admin&pass=admin" | \
-		python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null) && \
-	API_TOKEN=$$(curl -sf "http://127.0.0.1:5380/api/user/createToken?user=admin&pass=admin&tokenName=terraform-test-$$(date +%s)&token=$$TOKEN" | \
-		python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null) && \
+	@set +x; \
+	PW=$$( (test -f .env.test && grep -E '^DNS_ADMIN_PASSWORD=' .env.test | cut -d= -f2-) || echo admin ); \
+	test -n "$$PW" || (echo "ERROR: DNS_ADMIN_PASSWORD is empty in .env.test"; exit 1); \
+	API_TOKEN=$$(printf '%s\n' "$$PW" | ./scripts/test-token-bootstrap.sh get-token \
+		http://127.0.0.1:5380 terraform-test-$$(date +%s)) && \
+	test -n "$$API_TOKEN" || (echo "ERROR: bootstrap returned empty API token"; exit 1) && \
 	sed -i'' -e "s/^TECHNITIUM_API_TOKEN=.*/TECHNITIUM_API_TOKEN=$$API_TOKEN/" .env.test && \
 	echo "Token provisioned and written to .env.test"
 
-testacc-up:
+testacc-up: _testdata-preflight
 	@test -f .env.test || (echo "ERROR: .env.test not found. Copy .env.test.example to .env.test and fill in values." && exit 1)
+	mkdir -p ./.testdata/dns-data
 	docker compose -f docker-compose.test.yml up -d --wait
 	$(MAKE) testacc-token
 	$(MAKE) testacc
 
 testacc-down:
 	docker compose -f docker-compose.test.yml down -v
+	# Same cleanup rationale as testacc-down-tls (issue #36): non-root
+	# container means host user owns the bind-mounted data dir, so plain
+	# rm works.
+	rm -rf ./.testdata/dns-data
 
 # --- TLS-enabled acceptance test path -----------------------------------------
 #
@@ -50,13 +100,13 @@ testacc-tls-prep:
 
 testacc-token-tls:
 	@echo "Provisioning fresh Technitium API token over HTTPS..."
-	@PW=$$( (test -f .env.test && grep -E '^DNS_ADMIN_PASSWORD=' .env.test | cut -d= -f2) || echo admin ); \
+	@set +x; \
+	PW=$$( (test -f .env.test && grep -E '^DNS_ADMIN_PASSWORD=' .env.test | cut -d= -f2-) || echo admin ); \
 	test -n "$$PW" || (echo "ERROR: DNS_ADMIN_PASSWORD is empty in .env.test"; exit 1); \
-	TOKEN=$$(curl -sf --cacert ./testdata/tls/ca.pem "https://127.0.0.1:5443/api/user/login?user=admin&pass=$$PW" | \
-		python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null) && \
-	API_TOKEN=$$(curl -sf --cacert ./testdata/tls/ca.pem "https://127.0.0.1:5443/api/user/createToken?user=admin&pass=$$PW&tokenName=terraform-test-tls-$$(date +%s)&token=$$TOKEN" | \
-		python3 -c "import sys,json; print(json.load(sys.stdin)['token'])" 2>/dev/null) && \
-	(umask 077 && echo "$$API_TOKEN" > ./testdata/tls/api-token) && \
+	API_TOKEN=$$(printf '%s\n' "$$PW" | ./scripts/test-token-bootstrap.sh get-token \
+		https://127.0.0.1:5443 terraform-test-tls-$$(date +%s) ./testdata/tls/ca.pem) && \
+	test -n "$$API_TOKEN" || (echo "ERROR: bootstrap returned empty API token"; exit 1) && \
+	(umask 077 && printf '%s\n' "$$API_TOKEN" > ./testdata/tls/api-token) && \
 	echo "Token written to ./testdata/tls/api-token (mode 0600)"
 
 testacc-tls:
@@ -67,35 +117,25 @@ testacc-tls:
 	 TF_ACC=1 \
 	 go test -v ./... -count=1 -timeout 120m
 
-testacc-up-tls:
+testacc-up-tls: _testdata-preflight
 	$(MAKE) testacc-tls-prep
+	mkdir -p ./.testdata/dns-data
 	docker compose -f docker-compose.test.yml -f docker-compose.test.tls.yml up -d --wait
 	@echo "Waiting for HTTPS admin endpoint to accept requests..."
-	@PW=$$( (test -f .env.test && grep -E '^DNS_ADMIN_PASSWORD=' .env.test | cut -d= -f2) || echo admin ); \
-	for i in $$(seq 1 60); do \
-		if curl -sf --cacert ./testdata/tls/ca.pem --max-time 2 \
-		    "https://127.0.0.1:5443/api/user/login?user=admin&pass=$$PW" >/dev/null 2>&1; then \
-			echo "HTTPS endpoint ready after $$i attempt(s)"; break; \
-		fi; \
-		if [ $$i -eq 60 ]; then \
-			echo "ERROR: HTTPS endpoint never became ready (60 attempts, ~60s)"; exit 1; \
-		fi; \
-		sleep 1; \
-	done
+	@set +x; \
+	PW=$$( (test -f .env.test && grep -E '^DNS_ADMIN_PASSWORD=' .env.test | cut -d= -f2-) || echo admin ); \
+	printf '%s\n' "$$PW" | ./scripts/test-token-bootstrap.sh wait-ready \
+		https://127.0.0.1:5443 ./testdata/tls/ca.pem
 	$(MAKE) testacc-token-tls
 	$(MAKE) testacc-tls
 
 testacc-down-tls:
+	# .testdata/dns-data is a host bind mount of the Technitium data dir; the
+	# container runs as the host user (issue #36), so files written there are
+	# host-owned and removable without sudo. ./testdata/tls is the generated
+	# TLS material. Both are wiped here for a clean next-run baseline.
 	docker compose -f docker-compose.test.yml -f docker-compose.test.tls.yml down -v
-	# .testdata/config is a bind mount, not a docker volume, so `down -v`
-	# does not clear it. Files inside it are owned by root (because the
-	# Technitium container runs as root — see issue #36), so a host-side
-	# `rm -rf` would need sudo. Use a throwaway container to wipe it
-	# instead, which avoids any host privilege requirement.
-	@if [ -d ./.testdata/config ]; then \
-		docker run --rm -v "$$(pwd)/.testdata:/wipe" alpine:latest rm -rf /wipe/config; \
-	fi
-	rm -rf ./testdata/tls
+	rm -rf ./.testdata/dns-data ./testdata/tls
 
 generate:
 	go generate ./...
@@ -115,4 +155,4 @@ generate-stig:
 	go run ./tools/generate_stig_baselines.go
 	@echo "Generated internal/provider/validators/stig_baselines_gen.go"
 
-.PHONY: build build-fips test test-fips testacc testacc-token testacc-up testacc-down testacc-tls-prep testacc-token-tls testacc-tls testacc-up-tls testacc-down-tls generate docs lint install generate-stig
+.PHONY: build build-fips test test-fips testacc testacc-token testacc-up testacc-down testacc-tls-prep testacc-token-tls testacc-tls testacc-up-tls testacc-down-tls generate docs lint install generate-stig _testdata-preflight

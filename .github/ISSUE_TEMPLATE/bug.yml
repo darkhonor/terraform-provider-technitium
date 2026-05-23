@@ -1,0 +1,137 @@
+name: Bug report
+description: Report a misbehavior in the Technitium Terraform provider.
+title: "bug: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The fields marked
+        required are the minimum the maintainer needs to diagnose; the
+        optional ones help if you happen to know the answer but should
+        not block you from filing.
+
+        **For security vulnerabilities, do NOT use this template.** See
+        [SECURITY.md](https://github.com/darkhonor/terraform-provider-technitium/blob/main/.github/SECURITY.md)
+        for the private disclosure path.
+
+  - type: input
+    id: provider-version
+    attributes:
+      label: Provider version
+      description: Output of `terraform version` showing the technitium provider line, or the value from your `required_providers` block.
+      placeholder: "1.2.0"
+    validations:
+      required: true
+
+  - type: input
+    id: terraform-version
+    attributes:
+      label: Terraform version
+      description: Output of `terraform version` (the first line).
+      placeholder: "Terraform v1.9.0"
+    validations:
+      required: true
+
+  - type: input
+    id: technitium-version
+    attributes:
+      label: Technitium DNS Server version
+      description: The version of the Technitium DNS Server you are running. Visible in the admin web console footer.
+      placeholder: "13.6.0"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: os
+    attributes:
+      label: OS / platform
+      description: Where the Terraform CLI is running, not where the DNS server is running.
+      options:
+        - Not sure
+        - Linux
+        - macOS
+        - Windows
+        - FreeBSD
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the misbehavior. What did `terraform plan` / `apply` / `destroy` actually do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro-hcl
+    attributes:
+      label: Minimal reproducing HCL
+      description: The smallest configuration that demonstrates the bug. Provider block + the affected resource(s) is usually enough.
+      render: hcl
+    validations:
+      required: true
+
+  - type: textarea
+    id: tf-output
+    attributes:
+      label: terraform plan / apply output
+      description: |
+        Paste relevant output here. **Redact any tokens, passwords, or
+        internal hostnames before submitting.** Wrap large outputs in
+        `<details>` if needed.
+      render: shell
+    validations:
+      required: false
+
+  - type: dropdown
+    id: tls-mode
+    attributes:
+      label: TLS mode
+      description: How the provider is configured to reach the Technitium API.
+      options:
+        - Not sure
+        - HTTP
+        - HTTPS with publicly-trusted CA
+        - HTTPS with custom CA (ca_cert_file set)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: stig-mode
+    attributes:
+      label: STIG enforcement mode
+      description: The value of `stig_compliance.enforcement` in the provider block, if set.
+      options:
+        - Not sure
+        - strict (default)
+        - warn
+        - silent
+        - N/A (stig_compliance.enabled = false)
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Anything else that might help -- screenshots, related issues, recent changes.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: preflight
+    attributes:
+      label: Pre-flight
+      options:
+        - label: I searched existing open and closed issues and did not find a duplicate.
+          required: true

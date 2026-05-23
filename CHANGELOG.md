@@ -18,6 +18,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `Client.ZoneSetCatalog(ctx, zone, catalog)` API client helper. Passing
   an empty catalog string unsets membership.
 
+### Security
+
+- Acceptance-test token provisioning no longer exposes the Technitium admin
+  password or per-run API session token via `/proc/PID/cmdline` (`ps -ef`) or
+  `/proc/PID/environ` (`ps eww`). The `testacc-token`, `testacc-token-tls`,
+  and `testacc-up-tls` readiness-probe recipes were rewritten to pipe the
+  password to a new `scripts/test-token-bootstrap.sh` helper on stdin. The
+  helper reads the credential from stdin into a local shell variable,
+  URL-encodes it via a python helper that also reads from stdin, and sends
+  the form body to curl via `--data @-` on a bash heredoc. The password
+  value therefore never enters argv or env of any process in the test
+  harness flow. No production code or wire shape changes. ([#35])
+
 ### Known limitations
 
 - The three Technitium per-member catalog override flags
@@ -34,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [#23]: https://github.com/darkhonor/terraform-provider-technitium/issues/23
 [#29]: https://github.com/darkhonor/terraform-provider-technitium/issues/29
 [#30]: https://github.com/darkhonor/terraform-provider-technitium/issues/30
+[#35]: https://github.com/darkhonor/terraform-provider-technitium/issues/35
 
 ## [1.1.0] - 2026-03-29
 

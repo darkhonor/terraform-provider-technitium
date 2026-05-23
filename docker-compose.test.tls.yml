@@ -9,6 +9,24 @@
 # After this overlay, the admin API is reachable at https://127.0.0.1:5443
 # with the CA at ./testdata/tls/ca.pem (used by the provider via
 # TECHNITIUM_CACERT).
+#
+# Inherited from docker-compose.test.yml via compose merge semantics
+# (NOT redeclared here):
+#   - user: "${HOST_UID:-1000}:${HOST_GID:-1000}"  (scalar; base wins)
+#   - cap_add: [NET_BIND_SERVICE]                  (list-append; base entry kept)
+#   - tmpfs: [/var/log/technitium:size=128m]       (list-append; base entry kept)
+#   - volumes: ./.testdata/dns-data:/etc/dns       (list-append; the overlay's
+#                                                  ./testdata/tls:/etc/dns/tls:ro
+#                                                  mount nests inside it, shadowing
+#                                                  the /etc/dns/tls subpath with the
+#                                                  read-only host bind)
+#   - env_file: [.env.test]                        (list-append; base entry kept,
+#                                                  values still apply to the merged
+#                                                  service)
+#   - environment: (overlay's environment map ADDS/OVERRIDES specific keys; it does
+#                  NOT replace the env_file source — both apply in the merged
+#                  service, with overlay environment values winning on key conflict)
+# See issue #36 and docker-compose.test.yml for the non-root container rationale.
 
 services:
   technitium:
