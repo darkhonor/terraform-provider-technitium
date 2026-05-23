@@ -18,6 +18,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - New `Client.ZoneSetCatalog(ctx, zone, catalog)` API client helper. Passing
   an empty catalog string unsets membership.
 
+### Fixed
+
+- STIG validators DNS-REQ-004 (zone-transfer ACL) and DNS-REQ-016 (notify
+  addresses) now correctly enforce against `technitium_zone` resources.
+  Both validators were silently no-op in v1.0.x and v1.1.x due to a schema
+  alignment defect; strict-mode users running existing HCL without
+  `allow_transfer` or `notify` populated will now see findings on
+  `terraform plan`. See **Upgrade Notes** below for remediation paths.
+  ([#39])
+
 ### Security
 
 - Acceptance-test token provisioning no longer exposes the Technitium admin
@@ -30,6 +40,49 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the form body to curl via `--data @-` on a bash heredoc. The password
   value therefore never enters argv or env of any process in the test
   harness flow. No production code or wire shape changes. ([#35])
+- New CI gate (`Verify action SHA pins`) enforces full 40-character commit
+  SHA pinning on every GitHub Actions `uses:` reference via
+  `suzuki-shunsuke/pinact-action`. The enforcement action itself is also
+  SHA-pinned so the gate does not introduce a new mutable workflow
+  dependency. Policy documented in [.github/SECURITY.md](.github/SECURITY.md).
+  Renovate manages SHA bumps for the `github-actions` ecosystem with a
+  three-day soak window. ([#56])
+- Bumped `golang.org/x/net`, `golang.org/x/crypto`, and the Go toolchain
+  to clear GO-2026-5026 and GO-2026-5013 advisories. ([#41])
+
+### Test infrastructure
+
+- The Technitium test container now runs as the host user instead of root.
+  Bind-mounted test data is created with host ownership at the make-target
+  layer, eliminating the need for `sudo rm -rf` cleanup after a test run.
+  CI runners (GitHub Actions UID 1001) pick up their own UID via
+  `HOST_UID` / `HOST_GID` exported from `GNUmakefile`. ([#36])
+- In-process TLS fixtures unblock NSS-mode and STIG-strict acceptance
+  tests that cannot run under HTTP. The `testacc-up-tls` target generates
+  a fresh self-signed CA + server cert under `./testdata/tls/`, brings up
+  a Technitium container with HTTPS on port 5443, and runs the full
+  acceptance suite over TLS. ([#33])
+
+### Documentation
+
+- DISA STIG library pins refreshed from V3R1 → V3R2 (BIND 9.x) and
+  V2R3 → V2R4 (Windows Server 2022 DNS). Both released
+  2026-04-01 per the [DISA STIG Public Library](https://public.cyber.mil/stigs/downloads/).
+  Zero validator-code impact: none of the provider's 28 DNS-REQ validators
+  cite any of the five rules that changed across both refreshed STIGs.
+  Provenance analysis posted as a comment on [#53]. ([#53])
+- README expanded with "Why use Terraform with Technitium?" sections for
+  already-IaC, new-to-IaC, and multi-Technitium audiences. Quick Start
+  split into "Homelab quick start" (HTTP, warn-mode STIG) and "Production
+  / hardened deployment" (HTTPS, custom CA, strict mode, full DNSSEC).
+  Capability comparison vs. the generic `hashicorp/dns` provider added,
+  with an explicit "where `hashicorp/dns` is the better fit" callout for
+  AD-integrated / Kerberos environments.
+- New community-health files: `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
+  (Contributor Covenant 2.1), GitHub Forms issue templates (bug,
+  enhancement), `.github/ISSUE_TEMPLATE/config.yml` routing security
+  reports to the private GitHub Security Advisory flow, and a
+  `.github/pull_request_template.md`. ([#60])
 
 ### Known limitations
 
@@ -44,10 +97,76 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   by the current acceptance suite (single-node test container). Tracked in
   [#30].
 
+### Upgrade Notes
+
+**For strict-mode STIG users upgrading from v1.0.x or v1.1.x:** the
+`DNS-REQ-004` and `DNS-REQ-016` STIG validators were silently no-op in
+prior releases and now properly enforce. If your existing HCL leaves
+`allow_transfer` or `notify` unset on Primary zones, `terraform plan`
+will now surface STIG findings under strict mode. Three remediation
+paths cover every supported topology:
+
+**DNS-REQ-004 — zone-transfer ACL (NIST AC-3, AC-4):**
+
+```hcl
+resource "technitium_zone" "primary_with_secondaries" {
+  name = "example.com"
+  type = "Primary"
+
+  # Production / hardened: enumerate the secondary nameserver IPs that
+  # are authorized to pull zone data via AXFR / IXFR.
+  allow_transfer = ["192.0.2.10", "192.0.2.11"]
+}
+
+resource "technitium_zone" "primary_no_transfers" {
+  name = "internal.example.com"
+  type = "Primary"
+
+  # Hidden-primary or single-server topologies: deny transfers entirely.
+  # Setting to [] is explicit and satisfies the validator.
+  allow_transfer = []
+}
+```
+
+**DNS-REQ-016 — notify addresses (NIST SC-8, CM-6):**
+
+```hcl
+resource "technitium_zone" "primary_with_secondaries" {
+  name = "example.com"
+  type = "Primary"
+
+  # Production / hardened: list the secondary nameservers that should
+  # receive NOTIFY messages when this zone's SOA serial advances.
+  notify = ["192.0.2.10", "192.0.2.11"]
+}
+
+resource "technitium_zone" "primary_silent" {
+  name = "internal.example.com"
+  type = "Primary"
+
+  # Hidden-primary topology: suppress NOTIFY entirely. The validator
+  # accepts an explicit empty list as a documented intentional choice.
+  notify = []
+}
+```
+
+**If you are not yet ready to populate these fields**, set
+`stig_compliance.enforcement = "warn"` in the provider block to demote
+the new findings from blocking errors to plan-time warnings while you
+work through your zones. `"silent"` suppresses them entirely. Both
+settings preserve the validator coverage for future runs.
+
 [#23]: https://github.com/darkhonor/terraform-provider-technitium/issues/23
 [#29]: https://github.com/darkhonor/terraform-provider-technitium/issues/29
 [#30]: https://github.com/darkhonor/terraform-provider-technitium/issues/30
+[#33]: https://github.com/darkhonor/terraform-provider-technitium/issues/33
 [#35]: https://github.com/darkhonor/terraform-provider-technitium/issues/35
+[#36]: https://github.com/darkhonor/terraform-provider-technitium/issues/36
+[#39]: https://github.com/darkhonor/terraform-provider-technitium/pull/39
+[#41]: https://github.com/darkhonor/terraform-provider-technitium/pull/41
+[#53]: https://github.com/darkhonor/terraform-provider-technitium/issues/53
+[#56]: https://github.com/darkhonor/terraform-provider-technitium/issues/56
+[#60]: https://github.com/darkhonor/terraform-provider-technitium/issues/60
 
 ## [1.1.0] - 2026-03-29
 

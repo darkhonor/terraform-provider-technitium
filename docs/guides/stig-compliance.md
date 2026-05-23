@@ -24,10 +24,17 @@ to Operate (ATO).
 
 This provider derives its requirements from two STIGs:
 
-| STIG | Version / Release | Date |
+| STIG | Version / Release | Library Release Date |
 |---|---|---|
 | BIND 9.x STIG | V3R2 | 2026-04-01 |
 | Windows Server 2022 DNS STIG | V2R4 | 2026-04-01 |
+
+Dates above are the release dates published in the
+[DISA STIG Public Library](https://public.cyber.mil/stigs/downloads/) STIG
+archive metadata at the time of this provider release. DISA may
+announce STIG availability separately (for example via STIG release
+notifications) on a different date; the library archive timestamp is
+the source-of-record for compliance currency claims in this provider.
 
 ## NIST SP 800-53 Controls
 

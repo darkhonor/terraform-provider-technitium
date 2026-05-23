@@ -24,10 +24,14 @@ and `terraform plan` time, catching misconfigurations before they reach your DNS
 
 **Supported STIGs:**
 
-| STIG | Version | Release Date |
+| STIG | Version | Library Release Date |
 |---|---|---|
 | [BIND 9.x STIG](https://www.cyber.mil/stigs) | V3R2 | 2026-04-01 |
 | [Windows Server 2022 DNS STIG](https://www.cyber.mil/stigs) | V2R4 | 2026-04-01 |
+
+Dates are the release dates published in the
+[DISA STIG Public Library](https://public.cyber.mil/stigs/downloads/)
+archive metadata at the time of the corresponding provider release.
 
 ## Why use Terraform with Technitium?
 
