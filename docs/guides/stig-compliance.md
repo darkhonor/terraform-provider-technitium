@@ -26,8 +26,8 @@ This provider derives its requirements from two STIGs:
 
 | STIG | Version / Release | Date |
 |---|---|---|
-| BIND 9.x STIG | V3R1 | 2025-07-14 |
-| Windows Server 2022 DNS STIG | V2R3 | 2025-04-02 |
+| BIND 9.x STIG | V3R2 | 2026-04-01 |
+| Windows Server 2022 DNS STIG | V2R4 | 2026-04-01 |
 
 ## NIST SP 800-53 Controls
 

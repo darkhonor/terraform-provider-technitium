@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // Code generated from DISA STIG data; DO NOT EDIT.
-// Source: BIND 9.x STIG V3R1, Windows Server 2022 DNS STIG V2R3
-// Generated: 2026-03-19
+// Source: BIND 9.x STIG V3R2, Windows Server 2022 DNS STIG V2R4
+// Generated: 2026-05-23
 
 package validators
 
