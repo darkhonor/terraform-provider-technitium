@@ -10,7 +10,7 @@ not to force one path on the other.
 
 This project follows the [Contributor Covenant 2.1](CODE_OF_CONDUCT.md).
 By participating, you agree to uphold it. Reports of conduct issues go
-to `darkhonor@users.noreply.github.com`.
+to `conduct@darkhonor.com`.
 
 We expect everyone in the community to treat each other with respect.
 There is no place here for hate, harassment, or bullying in any form.
