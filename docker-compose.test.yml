@@ -1,7 +1,32 @@
+# This compose file is designed to be invoked via the GNUmakefile's
+# testacc-up / testacc-up-tls targets, which export HOST_UID and HOST_GID
+# (resolved from `id`) so the `user:` directive below runs the container
+# as the host user. Direct `docker compose -f docker-compose.test.yml up`
+# outside of make will silently fall back to the 1000:1000 defaults and
+# may produce bind-mount permission errors on any host where the user's
+# UID/GID is not 1000. The supported entrypoint is `make testacc-up{,-tls}`.
+
 services:
   technitium:
     image: technitium/dns-server:latest@sha256:99c250f0ee494f2f31e09a76d83f8213bc4c5d6f106b0895cd5f327518469c48
     container_name: technitium-test
+    # Run as the host user so bind-mounted test material is owned correctly
+    # without chown or relaxed file modes. Defaults to 1000:1000 (typical
+    # Linux user); the GNUmakefile exports HOST_UID/HOST_GID resolved from
+    # `id` so CI runners (e.g. GitHub Actions UID 1001) pick up their own
+    # UID. See issue #36.
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    # NET_BIND_SERVICE is declared defensively. Under current Docker
+    # (Engine 20.10+) containers default to
+    # net.ipv4.ip_unprivileged_port_start=0, which means non-root
+    # processes can already bind low ports without this capability — so
+    # the cap_add is redundant today. It is kept explicit so the test
+    # fixture survives future Docker default tightening (e.g. rootless
+    # Docker, Podman, or hardened daemon configs) where the unprivileged
+    # port range is restricted. The container still binds port 53
+    # internally (host port 15353 maps to container port 53).
+    cap_add:
+      - NET_BIND_SERVICE
     ports:
       - "127.0.0.1:5380:5380"
       - "127.0.0.1:15353:53/udp"
@@ -9,4 +34,20 @@ services:
     env_file:
       - .env.test
     volumes:
-      - ./.testdata/config:/etc/dns/config
+      # Bind-mount the WHOLE /etc/dns dir (not just /etc/dns/config) so the
+      # non-root container can create subpaths like /etc/dns/blocklists at
+      # startup. The image ships with /etc/dns empty, so a fresh
+      # host-side dir is sufficient. The host dir is created by the
+      # GNUmakefile `mkdir -p` step, which inherits the host user's
+      # ownership — matching the container UID set above means writes
+      # work without chown gymnastics. A Docker-managed named volume was
+      # tried first but initializes with the image's root ownership,
+      # blocking the non-root container.
+      - ./.testdata/dns-data:/etc/dns
+    tmpfs:
+      # /var/log/technitium is the image's default log dir; root-owned in
+      # the image and unwritable by the non-root container. tmpfs is ideal
+      # for ephemeral test logs: writable by the container UID, no host
+      # pollution, automatic cleanup on container stop. Capped at 128m so a
+      # runaway log loop can't fill memory.
+      - /var/log/technitium:size=128m

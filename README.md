@@ -210,16 +210,19 @@ acceptance test. The container stays running so you can iterate. Tear it down wh
 make testacc-down
 ```
 
-> **Note:** Acceptance tests require a running Technitium DNS Server instance. The included
-> Docker Compose file provides a pre-configured test environment:
+> **Note:** Acceptance tests require a running Technitium DNS Server instance. The
+> `make testacc-up` target handles the full lifecycle: runs a preflight ownership
+> check on `./.testdata/`, creates the bind-mount data directory with host-user
+> ownership, starts the container as a non-root user (per issue #36), provisions a
+> fresh API token, and runs every acceptance test. Unit tests (`make test`) do not
+> require Docker and run entirely offline.
 >
-> ```bash
-> docker compose -f docker-compose.test.yml up -d
-> ```
->
-> The `make testacc-up` target handles the full lifecycle: starts the container, provisions a
-> fresh API token, and runs every acceptance test. Unit tests (`make test`) do not require
-> Docker and run entirely offline.
+> Invoking `docker compose -f docker-compose.test.yml up -d` directly is **not
+> supported**. The compose file's `user:` directive expects `HOST_UID` and
+> `HOST_GID` environment variables exported by the make target, and the bind-mount
+> source directory must exist with the host user's ownership before container
+> start. Bypassing `make` will silently fall back to `1000:1000` and may produce
+> permission errors on any host where the user's UID/GID differs.
 
 #### TLS-mode acceptance suite
 
