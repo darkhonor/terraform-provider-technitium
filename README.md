@@ -187,22 +187,28 @@ dynamic updates over TSIG — the same protocol Bind 9 uses — and works agains
 DNS server that supports it. `darkhonor/technitium` talks directly to Technitium's
 native HTTP API and exposes the full administrative surface, not just the records subset.
 
-| Capability | `hashicorp/dns` (RFC 2136) | `darkhonor/technitium` |
+| Capability | `hashicorp/dns` (v3.6.1) | `darkhonor/technitium` |
 |---|---|---|
-| Manage DNS records | yes, via TSIG dynamic updates | yes, via native API |
-| Create + configure zones | no (must create in web UI first) | yes (`technitium_zone`) |
+| Manage DNS records | yes (8 `*_record*` resources) | yes (`technitium_record`) |
+| Create + configure zones | no (zones must exist on the DNS server first) | yes (`technitium_zone`) |
 | DNSSEC configuration | no | yes (algorithm, curve, NSEC3) |
-| TSIG key lifecycle | no (configure manually) | yes (`technitium_tsig_key`) |
+| TSIG key lifecycle on the server | no (server-side key configured manually) | yes (`technitium_tsig_key`) |
 | Catalog zone membership ([RFC 9432](https://datatracker.ietf.org/doc/rfc9432/)) | no | yes (`technitium_catalog_membership`) |
-| Server-wide settings, blocking, recursion | no | yes (`technitium_server_settings`) |
-| Authentication model | shared TSIG secret per provider config | per-user API token, revocable, scoped |
+| Server-wide settings (blocking, forwarding) | no | yes (`technitium_server_settings`) |
+| Authentication | TSIG ([RFC 2845](https://datatracker.ietf.org/doc/rfc2845/)) shared secret, OR GSS-TSIG ([RFC 3645](https://datatracker.ietf.org/doc/rfc3645/)) for Kerberos / Active Directory | Per-user API token (revocable, scoped) |
 | Embedded STIG compliance validation | no | yes (28 DNS security requirements) |
-| DNS-over-HTTPS provider transport | no (TSIG over UDP/TCP) | yes |
+| Provider-to-server transport | UDP/TCP on port 53 | HTTPS (REST API) |
 
-If you only need to add records to an existing zone and you're already running a
-mixed-DNS-server environment, `hashicorp/dns` is fine. If you want to manage Technitium
-end-to-end — including the zones, DNSSEC posture, TSIG keys, catalog membership, and
-server settings — this provider is the one designed for that.
+**Where `hashicorp/dns` is the better fit:** Active-Directory-integrated environments
+where GSS-TSIG / Kerberos authentication is the natural choice, or mixed-DNS-server
+environments where standard RFC 2136 compatibility across multiple vendors matters
+more than Technitium-specific features. This provider does not implement Kerberos
+authentication.
+
+**Where this provider is the better fit:** Technitium-only deployments where you want
+end-to-end management — zones, DNSSEC posture, TSIG keys, catalog membership, server
+settings, blocking, and the records themselves — in one declarative configuration,
+with STIG validation built in.
 
 ## STIG Compliance
 
