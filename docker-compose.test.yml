@@ -1,6 +1,6 @@
 services:
   technitium:
-    image: technitium/dns-server:latest
+    image: technitium/dns-server:latest@sha256:99c250f0ee494f2f31e09a76d83f8213bc4c5d6f106b0895cd5f327518469c48
     container_name: technitium-test
     ports:
       - "127.0.0.1:5380:5380"
