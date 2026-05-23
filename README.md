@@ -252,11 +252,15 @@ the NSS-mode and STIG-strict test families that cannot run under HTTP at all.
 The TLS target sources `DNS_ADMIN_PASSWORD` from `.env.test` (falling back to `admin` to
 match `.env.test.example`). It does not require any production credential.
 
-> **Known limitation:** the make targets currently pass the admin password and per-run API
-> token to `curl` as URL query parameters, which exposes them in local process listings
-> while curl is running. This is a side channel and is being tracked in
-> [#35](https://github.com/darkhonor/terraform-provider-technitium/issues/35); fix is to
-> move the credentials into the request body or a curl config file.
+> **Credential handling:** the make targets read `DNS_ADMIN_PASSWORD` from `.env.test`
+> into a shell variable and pipe it to `scripts/test-token-bootstrap.sh` on stdin via a
+> shell-builtin `printf`. The script reads the password from stdin into a local shell
+> variable, never sees it via argv or env, URL-encodes it through a python helper that
+> also reads from stdin, and sends the form body to curl via `--data @-` on a bash
+> heredoc. The credential value therefore does not appear in `/proc/PID/cmdline`
+> (`ps -ef`) or `/proc/PID/environ` (`ps eww`) of any process spawned during token
+> provisioning. Resolved in v1.2.0
+> ([#35](https://github.com/darkhonor/terraform-provider-technitium/issues/35)).
 
 CI runs `testacc-up-tls` automatically on every pull request.
 
