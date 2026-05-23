@@ -31,8 +31,24 @@ This security policy covers:
 - The Terraform provider binary and its source code
 - The STIG compliance validation engine
 - Credential handling (API tokens, TSIG keys)
+- GitHub Actions workflow integrity
 
 This policy does **not** cover:
 
 - The Technitium DNS Server itself (report to [TechnitiumSoftware](https://github.com/TechnitiumSoftware/DnsServer))
 - HashiCorp Terraform core (report to [HashiCorp](https://www.hashicorp.com/security))
+
+## GitHub Actions Pinning Policy
+
+All GitHub Actions `uses:` references must be pinned to a full 40-character
+commit SHA. Human-readable versions may be kept only as trailing comments, for
+example:
+
+```yaml
+- uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+```
+
+Do not pin actions by mutable tags such as `@v1`, `@v4`, or `@main`.
+Dependabot/Renovate manages SHA bumps for the `github_actions` ecosystem; the
+CI pinning gate prevents future workflow changes from weakening this
+supply-chain control.
