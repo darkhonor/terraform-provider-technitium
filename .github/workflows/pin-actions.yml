@@ -20,12 +20,7 @@ jobs:
           persist-credentials: false
 
       # Security ratchet for issue #56: every GitHub Actions uses reference
-      # must be pinned to a full 40-character commit SHA. pinact-action itself
-      # is also SHA-pinned so the enforcement tool does not become the new
-      # mutable supply-chain dependency.
+      # must be pinned to a full 40-character commit SHA. Keep this check
+      # offline so transient GitHub API failures cannot mask real regressions.
       - name: Verify GitHub Actions are SHA-pinned
-        uses: suzuki-shunsuke/pinact-action@cf51507d80d4d6522a07348e3d58790290eaf0b6 # v2.0.0
-        with:
-          skip_push: "true"
-          verify: "true"
-          github_token: ${{ github.token }}
+        run: bash .github/scripts/verify-action-pins.sh
