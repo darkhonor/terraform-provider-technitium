@@ -450,6 +450,8 @@ func (p *TechnitiumProvider) Resources(_ context.Context) []func() resource.Reso
 		NewClusterSecondaryResource,
 		NewUserResource,
 		NewAPITokenResource,
+		NewDHCPScopeResource,
+		NewDHCPReservedLeaseResource,
 	}
 }
 
@@ -463,6 +465,9 @@ func (p *TechnitiumProvider) DataSources(_ context.Context) []func() datasource.
 		NewBlockedZonesDataSource,
 		NewAllowedZoneDataSource,
 		NewAllowedZonesDataSource,
+		NewDHCPScopeDataSource,
+		NewDHCPScopesDataSource,
+		NewDHCPLeasesDataSource,
 	}
 }
 
