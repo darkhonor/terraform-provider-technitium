@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-07-26
+
 ### Added
 
 - Forwarder (`FWD`) record support is now usable end to end. Forwarder zones are
@@ -342,6 +344,7 @@ settings preserve the validator coverage for future runs.
 - FIPS 140-2 build support via BoringCrypto.
 - OSSF Scorecard, CodeQL, and Dependabot integration.
 
+[1.2.1]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.0.0...v1.0.1
