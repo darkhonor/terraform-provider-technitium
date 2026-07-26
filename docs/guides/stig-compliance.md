@@ -26,8 +26,28 @@ This provider derives its requirements from two STIGs:
 
 | STIG | Version / Release | Library Release Date |
 |---|---|---|
-| BIND 9.x STIG | V3R2 | 2026-04-01 |
-| Windows Server 2022 DNS STIG | V2R4 | 2026-04-01 |
+| BIND 9.x STIG | V3R3 | 2026-07-01 |
+| Windows Server 2022 DNS STIG | V2R5 | 2026-07-01 |
+
+Requirements were originally derived from BIND 9.x V3R2 and Windows Server 2022 DNS
+V2R4 (both 2026-04-01) and have been **re-validated against the July 2026 releases**
+above. Neither release adds or removes rules (BIND remains 73, Windows DNS 81), and
+all 42 STIG rules this provider cites are present and textually unchanged between the
+two revisions — so no requirement needed revision.
+
+The July releases do revise four rules, none of which this provider references:
+
+| Rule | Change | Why it is out of scope |
+|---|---|---|
+| `BIND-9X-001200` | check content | TSIG key **file ownership** on the DNS host |
+| `WDNS-22-000039` | check + fix | Filesystem access control on the **private key** |
+| `WDNS-22-000040` | check content | Key **file ownership** by the service account |
+| `WDNS-22-000043` | check content | Local **CRL cache** for PKI authentication |
+
+All four are host-level filesystem or PKI controls with no representation in the
+Technitium API, so they cannot be expressed as Terraform configuration and are not
+candidates for this engine. They are listed here so their absence is a recorded
+decision rather than an oversight.
 
 Dates above are the release dates published in the
 [DISA STIG Public Library](https://public.cyber.mil/stigs/downloads/) STIG

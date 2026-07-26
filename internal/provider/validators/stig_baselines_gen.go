@@ -2,8 +2,16 @@
 // SPDX-License-Identifier: MPL-2.0
 
 // Code generated from DISA STIG data; DO NOT EDIT.
-// Source: BIND 9.x STIG V3R2, Windows Server 2022 DNS STIG V2R4
-// Generated: 2026-05-23
+// Source: BIND 9.x STIG V3R3, Windows Server 2022 DNS STIG V2R5
+// Generated: 2026-05-23 (derived from V3R2 / V2R4)
+// Validated: 2026-07-26 against V3R3 / V2R5 — no requirement changes needed.
+//
+// The July 2026 releases add and remove no rules (BIND 73, Windows DNS 81 in both
+// revisions), and all 42 STIG rules cited below are present and textually unchanged
+// between V3R2->V3R3 and V2R4->V2R5. The four rules that did change
+// (BIND-9X-001200, WDNS-22-000039, WDNS-22-000040, WDNS-22-000043) are host-level
+// file-ownership and PKI-cache controls with no Technitium API representation, so
+// none are referenced here. See docs/guides/stig-compliance.md.
 
 package validators
 
