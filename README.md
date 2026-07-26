@@ -26,8 +26,8 @@ and `terraform plan` time, catching misconfigurations before they reach your DNS
 
 | STIG | Version | Library Release Date |
 |---|---|---|
-| [BIND 9.x STIG](https://www.cyber.mil/stigs) | V3R2 | 2026-04-01 |
-| [Windows Server 2022 DNS STIG](https://www.cyber.mil/stigs) | V2R4 | 2026-04-01 |
+| [BIND 9.x STIG](https://www.cyber.mil/stigs) | V3R3 | 2026-07-01 |
+| [Windows Server 2022 DNS STIG](https://www.cyber.mil/stigs) | V2R5 | 2026-07-01 |
 
 Dates are the release dates published in the
 [DISA STIG Public Library](https://public.cyber.mil/stigs/downloads/)
