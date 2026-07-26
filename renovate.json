@@ -10,11 +10,12 @@
   },
   "packageRules": [
     {
+      "description": "Container images - no release-age delay. These are test fixtures (the Technitium server used by acceptance tests), not shipped dependencies, so a bad image fails CI rather than reaching users. Waiting only means testing against an image older than the one users run. pinDigests still applies, so every bump remains an explicit, reviewable digest change.",
       "matchCategories": [
         "docker"
       ],
       "pinDigests": true,
-      "minimumReleaseAge": "7 days"
+      "minimumReleaseAge": "0 days"
     },
     {
       "description": "FIPS-validated cryptography - manual review required",
