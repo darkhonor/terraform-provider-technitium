@@ -7,6 +7,97 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Forwarder (`FWD`) record support is now usable end to end. Forwarder zones are
+  created empty (`initializeForwarder=false`), so each upstream forwarder is
+  managed as its own `technitium_record` resource rather than being baked into
+  zone creation. Previously `technitium_zone` with `type = "Forwarder"` failed
+  with `Parameter 'forwarder' missing.` and there was no `forwarder` argument to
+  supply. Documentation gains three worked examples — a single forwarder, a
+  DNSSEC-validating DoT forwarder with a plain fallback, and conditional
+  forwarding for an internal namespace — each covered by acceptance tests.
+  ([#69], closes [#75])
+
+### Changed
+
+- `FWD` record identity now includes `dnssec_validation`. Import IDs use
+  `zone::name::FWD::forwarder:protocol:priority:dnssecValidation`, which lets two
+  otherwise-identical forwarders be told apart in Terraform state. The legacy
+  three-field form `forwarder:protocol:priority` is still accepted on import and
+  leaves `dnssec_validation` unset rather than fabricating a value. ([#69])
+- **`dnssec_validation` now forces replacement.** Changing it destroys and
+  recreates the record instead of updating in place. This is deliberate: the
+  Technitium update API treats `dnssecValidation` as a settable value rather than
+  an identifier and provides no `newDnssecValidation`, so an in-place update of
+  one of two colliding forwarders rewrites it onto the other and the two collapse
+  into a single record. See **Upgrade Notes**. ([#69])
+
+### Fixed
+
+- `FWD` import no longer writes the CAA tag into the `protocol` attribute. The
+  import parser returned a single shared string slot that CAA used for its tag
+  and FWD reused for its protocol; `ImportState` read it under the CAA name and
+  assigned it to `protocol`. Correct only by coincidence of the two types sharing
+  a slot. ([#69])
+- An unrelated update to a `FWD` record no longer silently disables DNSSEC
+  validation. `dnssecValidation` is omitted from a partial update request when the
+  configuration does not set it, and Technitium treats a missing value as `false`
+  rather than "leave unchanged" — so a TTL-only change turned validation off. The
+  provider now always sends the current value. ([#69])
+- `FWD` records that omit `dnssec_validation` no longer show a permanent diff.
+  Refresh adopted the server's value into state, producing a `false -> null`
+  change on every plan, which combined with the new replacement semantics marked
+  untouched records for destruction. Refresh now updates the attribute only when
+  it is already tracked. ([#69])
+- Compliance requirements re-validated against the July 2026 DNS STIG releases —
+  BIND 9.x V3R3 and Windows Server 2022 DNS V2R5, both published 2026-07-01.
+  Neither adds or removes rules, and all 42 STIG rules this provider cites are
+  unchanged, so no requirement needed revision. Version citations updated
+  accordingly. ([#83])
+- CI: action pin check made deterministic. ([#63])
+
+### Security
+
+- fix(deps): bump golang.org/x/text to v0.39.0 (GO-2026-5970) ([#80])
+- fix(deps): bump google.golang.org/grpc to v1.82.1 (GHSA-hrxh-6v49-42gf) ([#81])
+
+### Dependencies
+
+- chore(deps): update github/codeql-action action to v4.36.0 ([#64])
+- chore(deps): update actions/checkout action to v6.0.3 ([#65])
+- chore(deps): update github/codeql-action action to v4.36.1 ([#66])
+- chore(deps): update github/codeql-action action to v4.36.2 ([#67])
+- fix(deps): update module software.sslmate.com/src/go-pkcs12 to v0.7.2 ([#68])
+- chore(deps): update actions/checkout action to v7 ([#70])
+- fix(deps): update module software.sslmate.com/src/go-pkcs12 to v0.7.3 ([#71])
+- chore(deps): update actions/setup-go action to v6.5.0 ([#72])
+- chore(deps): update actions/attest-build-provenance action to v4.1.1 ([#74])
+- chore(deps): update goreleaser/goreleaser-action action to v7.2.3 ([#76])
+- chore(deps): update github/codeql-action action to v4.37.3 ([#77])
+- chore(deps): update actions/setup-go action to v7 ([#79])
+- chore(deps): update technitium/dns-server:latest docker digest to 3580381 —
+  moves the acceptance-test fixture from Technitium **15.2 to 15.4** ([#73])
+- chore(renovate): drop the release-age delay on container images ([#82])
+
+### Upgrade Notes
+
+**`dnssec_validation` changes now replace the record.** If your configuration
+changes that attribute on an existing `FWD` record, the next plan shows a
+destroy-and-create rather than an in-place update. The record is briefly absent
+during apply. This is the safe behaviour — the in-place path it replaces could
+silently merge two forwarders into one.
+
+**Do not define two `FWD` records that differ only by `dnssec_validation`.** If
+two share the same `value`, `protocol` and `forwarder_priority`, the Technitium
+API cannot tell them apart: a delete removes whichever was created first and an
+update collapses the pair, both reporting success. Give each forwarder a distinct
+`forwarder_priority` (or a different `value` or `protocol`). Verified against
+Technitium 15.2 and 15.4 and reported upstream as
+[TechnitiumSoftware/DnsServer#2069](https://github.com/TechnitiumSoftware/DnsServer/issues/2069).
+The provider contains what it can — replacement semantics avoid the merging
+update path — but it cannot address one of an existing colliding pair.
+
 ## [1.2.0] - 2026-05-24
 
 ### Added
@@ -269,3 +360,23 @@ settings preserve the validator coverage for future runs.
 [#19]: https://github.com/darkhonor/terraform-provider-technitium/pull/19
 [#20]: https://github.com/darkhonor/terraform-provider-technitium/pull/20
 [#22]: https://github.com/darkhonor/terraform-provider-technitium/pull/22
+[#63]: https://github.com/darkhonor/terraform-provider-technitium/pull/63
+[#64]: https://github.com/darkhonor/terraform-provider-technitium/pull/64
+[#65]: https://github.com/darkhonor/terraform-provider-technitium/pull/65
+[#66]: https://github.com/darkhonor/terraform-provider-technitium/pull/66
+[#67]: https://github.com/darkhonor/terraform-provider-technitium/pull/67
+[#68]: https://github.com/darkhonor/terraform-provider-technitium/pull/68
+[#69]: https://github.com/darkhonor/terraform-provider-technitium/pull/69
+[#70]: https://github.com/darkhonor/terraform-provider-technitium/pull/70
+[#71]: https://github.com/darkhonor/terraform-provider-technitium/pull/71
+[#72]: https://github.com/darkhonor/terraform-provider-technitium/pull/72
+[#73]: https://github.com/darkhonor/terraform-provider-technitium/pull/73
+[#74]: https://github.com/darkhonor/terraform-provider-technitium/pull/74
+[#75]: https://github.com/darkhonor/terraform-provider-technitium/issues/75
+[#76]: https://github.com/darkhonor/terraform-provider-technitium/pull/76
+[#77]: https://github.com/darkhonor/terraform-provider-technitium/pull/77
+[#79]: https://github.com/darkhonor/terraform-provider-technitium/pull/79
+[#80]: https://github.com/darkhonor/terraform-provider-technitium/pull/80
+[#81]: https://github.com/darkhonor/terraform-provider-technitium/pull/81
+[#82]: https://github.com/darkhonor/terraform-provider-technitium/pull/82
+[#83]: https://github.com/darkhonor/terraform-provider-technitium/pull/83
