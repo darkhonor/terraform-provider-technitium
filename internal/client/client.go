@@ -43,33 +43,43 @@ func (e *APIError) IsInvalidToken() bool {
 
 // ClientConfig holds all configuration options for NewClient.
 type ClientConfig struct {
-	BaseURL       string
-	Token         string
-	SkipTLSVerify bool   // default: false
-	CACertFile    string
-	CACertDir     string
-	TLSServerName string
-	TLSMinVersion string // "1.2" or "1.3", default: "1.3"
+	BaseURL        string
+	Token          string
+	Username       string // used with Password when Token is empty
+	Password       string
+	SkipTLSVerify  bool // default: false
+	CACertFile     string
+	CACertDir      string
+	TLSServerName  string
+	TLSMinVersion  string // "1.2" or "1.3", default: "1.3"
+	TimeoutSeconds int    // HTTP client timeout, default: 30
 }
 
 // Client is the Technitium DNS Server API client.
 type Client struct {
 	baseURL    string
 	token      string
+	username   string
+	password   string
 	httpClient *http.Client
 }
 
-// NewClient creates a new Technitium API client.
+// NewClient creates a new Technitium API client. Authentication is either a
+// pre-existing API token, or a username/password pair — in the latter case
+// Login must be called before any other API call to obtain a session token.
 func NewClient(cfg ClientConfig) (*Client, error) {
 	cfg.BaseURL = strings.TrimRight(cfg.BaseURL, "/")
 	if cfg.BaseURL == "" {
 		return nil, fmt.Errorf("server_url must not be empty")
 	}
-	if cfg.Token == "" {
-		return nil, fmt.Errorf("api_token must not be empty")
+	if cfg.Token == "" && (cfg.Username == "" || cfg.Password == "") {
+		return nil, fmt.Errorf("either api_token or username and password must be set")
 	}
 	if cfg.TLSMinVersion == "" {
 		cfg.TLSMinVersion = "1.3"
+	}
+	if cfg.TimeoutSeconds <= 0 {
+		cfg.TimeoutSeconds = 30
 	}
 
 	transport := &http.Transport{}
@@ -107,13 +117,77 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	return &Client{
-		baseURL: cfg.BaseURL,
-		token:   cfg.Token,
+		baseURL:  cfg.BaseURL,
+		token:    cfg.Token,
+		username: cfg.Username,
+		password: cfg.Password,
 		httpClient: &http.Client{
-			Timeout:   30 * time.Second,
+			Timeout:   time.Duration(cfg.TimeoutSeconds) * time.Second,
 			Transport: transport,
 		},
 	}, nil
+}
+
+// Login authenticates with the configured username/password and stores the
+// resulting session token for subsequent API calls. No-op requirement: the
+// client must have been created with Username and Password set.
+func (c *Client) Login(ctx context.Context) error {
+	if c.username == "" || c.password == "" {
+		return fmt.Errorf("login requires username and password")
+	}
+
+	params := url.Values{
+		"user": {c.username},
+		"pass": {c.password},
+	}
+	reqURL := fmt.Sprintf("%s/api/user/login", c.baseURL)
+	body := strings.NewReader(params.Encode())
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, body)
+	if err != nil {
+		return fmt.Errorf("creating login request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("login request failed: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("reading login response body: %w", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected HTTP status %d on login: %s", resp.StatusCode, string(respBody))
+	}
+
+	// The login response carries the token at the top level, outside the
+	// usual "response" envelope.
+	var loginResp struct {
+		Status       string `json:"status"`
+		ErrorMessage string `json:"errorMessage"`
+		Token        string `json:"token"`
+	}
+	if err := json.Unmarshal(respBody, &loginResp); err != nil {
+		return fmt.Errorf("decoding login response JSON: %w", err)
+	}
+	if loginResp.Status != "ok" {
+		return &APIError{Status: loginResp.Status, ErrorMessage: loginResp.ErrorMessage}
+	}
+	if loginResp.Token == "" {
+		return fmt.Errorf("login succeeded but no token was returned")
+	}
+
+	c.token = loginResp.Token
+	return nil
+}
+
+// Logout invalidates the current session token. Best effort — errors are
+// returned but the token is cleared regardless.
+func (c *Client) Logout(ctx context.Context) error {
+	_, err := c.doGet(ctx, "/api/user/logout", nil)
+	c.token = ""
+	return err
 }
 
 // loadCACerts loads PEM certificates from certFile and/or certDir into a new

@@ -89,17 +89,17 @@ func buildValue(t *testing.T, typ tftypes.Type, attrs map[string]interface{}) tf
 func zoneResourceSchema() schema.Schema {
 	return schema.Schema{
 		Attributes: map[string]schema.Attribute{
-			"id":                    schema.StringAttribute{Computed: true},
-			"name":                  schema.StringAttribute{Required: true},
-			"type":                  schema.StringAttribute{Required: true},
-			"soa_serial_date_scheme": schema.BoolAttribute{Optional: true},
-			"notify":                schema.ListAttribute{Optional: true, ElementType: types.StringType},
-			"allow_transfer":        schema.ListAttribute{Optional: true, ElementType: types.StringType},
-			"zone_transfer_tsig_key_names":          schema.ListAttribute{Optional: true, ElementType: types.StringType},
-			"primary_zone_transfer_tsig_key_name":   schema.StringAttribute{Optional: true},
-			"soa_serial":    schema.Int64Attribute{Computed: true},
-			"status":        schema.StringAttribute{Computed: true},
-			"dnssec_status": schema.StringAttribute{Computed: true},
+			"id":                                  schema.StringAttribute{Computed: true},
+			"name":                                schema.StringAttribute{Required: true},
+			"type":                                schema.StringAttribute{Required: true},
+			"soa_serial_date_scheme":              schema.BoolAttribute{Optional: true},
+			"notify":                              schema.ListAttribute{Optional: true, ElementType: types.StringType},
+			"allow_transfer":                      schema.ListAttribute{Optional: true, ElementType: types.StringType},
+			"zone_transfer_tsig_key_names":        schema.ListAttribute{Optional: true, ElementType: types.StringType},
+			"primary_zone_transfer_tsig_key_name": schema.StringAttribute{Optional: true},
+			"soa_serial":                          schema.Int64Attribute{Computed: true},
+			"status":                              schema.StringAttribute{Computed: true},
+			"dnssec_status":                       schema.StringAttribute{Computed: true},
 		},
 		Blocks: map[string]schema.Block{
 			"dnssec": schema.SingleNestedBlock{

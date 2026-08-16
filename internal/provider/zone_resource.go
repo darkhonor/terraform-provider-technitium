@@ -51,6 +51,11 @@ type ZoneResourceModel struct {
 	DNSSEC                         *DNSSECModel `tfsdk:"dnssec"`
 	ZoneTransferTsigKeyNames       types.List   `tfsdk:"zone_transfer_tsig_key_names"`
 	PrimaryZoneTransferTsigKeyName types.String `tfsdk:"primary_zone_transfer_tsig_key_name"`
+	QueryAccess                    types.String `tfsdk:"query_access"`
+	QueryAccessNetworkACL          types.List   `tfsdk:"query_access_network_acl"`
+	DynamicUpdate                  types.String `tfsdk:"dynamic_update"`
+	DynamicUpdateNetworkACL        types.List   `tfsdk:"dynamic_update_network_acl"`
+	Disabled                       types.Bool   `tfsdk:"disabled"`
 	// Computed
 	SOASerial    types.Int64  `tfsdk:"soa_serial"`
 	Status       types.String `tfsdk:"status"`
@@ -122,6 +127,34 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					"Valid only for Secondary, SecondaryForwarder, and SecondaryCatalog zones. " +
 					"Maps to STIG BIND-9X-001010 (AC-10).",
 				Optional: true,
+			},
+			"query_access": schema.StringAttribute{
+				Description: "Query access policy for the zone. Valid values: Allow, Deny, " +
+					"AllowOnlyPrivateNetworks, AllowOnlyZoneNameServers, UseSpecifiedNetworkACL, " +
+					"AllowZoneNameServersAndUseSpecifiedNetworkACL. When unset, the server default is left unmanaged.",
+				Optional: true,
+			},
+			"query_access_network_acl": schema.ListAttribute{
+				Description: "Network ACL used when query_access uses a specified network ACL.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"dynamic_update": schema.StringAttribute{
+				Description: "Dynamic updates (RFC 2136) policy for the zone. Valid values: Deny, Allow, " +
+					"AllowOnlyZoneNameServers, UseSpecifiedNetworkACL, " +
+					"AllowZoneNameServersAndUseSpecifiedNetworkACL. When unset, the server default is left unmanaged.",
+				Optional: true,
+			},
+			"dynamic_update_network_acl": schema.ListAttribute{
+				Description: "Network ACL used when dynamic_update uses a specified network ACL.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"disabled": schema.BoolAttribute{
+				Description: "Disable the zone (it stops serving queries but keeps its data).",
+				Optional:    true,
+				Computed:    true,
+				Default:     booldefault.StaticBool(false),
 			},
 			// Computed attributes
 			"soa_serial": schema.Int64Attribute{
@@ -466,6 +499,39 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 		}
 	}
 
+	// Handle query access policy
+	if !plan.QueryAccess.IsNull() && !plan.QueryAccess.IsUnknown() {
+		opts["queryAccess"] = plan.QueryAccess.ValueString()
+	}
+	if !plan.QueryAccessNetworkACL.IsNull() && !plan.QueryAccessNetworkACL.IsUnknown() {
+		var acl []string
+		plan.QueryAccessNetworkACL.ElementsAs(ctx, &acl, false)
+		if len(acl) > 0 {
+			opts["queryAccessNetworkACL"] = strings.Join(acl, ",")
+		} else {
+			opts["queryAccessNetworkACL"] = "false"
+		}
+	}
+
+	// Handle dynamic update policy
+	if !plan.DynamicUpdate.IsNull() && !plan.DynamicUpdate.IsUnknown() {
+		opts["update"] = plan.DynamicUpdate.ValueString()
+	}
+	if !plan.DynamicUpdateNetworkACL.IsNull() && !plan.DynamicUpdateNetworkACL.IsUnknown() {
+		var acl []string
+		plan.DynamicUpdateNetworkACL.ElementsAs(ctx, &acl, false)
+		if len(acl) > 0 {
+			opts["updateNetworkACL"] = strings.Join(acl, ",")
+		} else {
+			opts["updateNetworkACL"] = "false"
+		}
+	}
+
+	// Handle disabled
+	if !plan.Disabled.IsNull() && !plan.Disabled.IsUnknown() {
+		opts["disabled"] = fmt.Sprintf("%t", plan.Disabled.ValueBool())
+	}
+
 	if len(opts) > 0 {
 		return r.client.ZoneOptionsSet(ctx, plan.Name.ValueString(), opts)
 	}
@@ -523,6 +589,17 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 
 	// Read zone_transfer_tsig_key_names
 	readStringList(ctx, &model.ZoneTransferTsigKeyNames, zone.ZoneTransferTsigKeys)
+
+	// Read query access / dynamic update policies only when managed
+	if !model.QueryAccess.IsNull() {
+		model.QueryAccess = types.StringValue(zone.QueryAccess)
+	}
+	readStringList(ctx, &model.QueryAccessNetworkACL, zone.QueryAccessNetworkACL)
+	if !model.DynamicUpdate.IsNull() {
+		model.DynamicUpdate = types.StringValue(zone.Update)
+	}
+	readStringList(ctx, &model.DynamicUpdateNetworkACL, zone.UpdateNetworkACL)
+	model.Disabled = types.BoolValue(zone.Disabled)
 
 	// Read primary_zone_transfer_tsig_key_name
 	// Set to null for non-secondary zone types to prevent perpetual diffs

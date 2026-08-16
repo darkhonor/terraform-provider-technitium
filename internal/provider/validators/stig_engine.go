@@ -32,7 +32,7 @@ type EngineConfig struct {
 type Engine struct {
 	config       EngineConfig
 	requirements map[string]DNSSecurityRequirement // indexed by ID
-	baselines    map[string]string                  // control -> lowest baseline
+	baselines    map[string]string                 // control -> lowest baseline
 	bindings     map[TargetResource][]ValidatorBinding
 }
 

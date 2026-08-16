@@ -492,10 +492,10 @@ func TestEngine_NullAttribute_TriggersFinding_Strict(t *testing.T) {
 	// Simulate a zone with dnssec block entirely omitted (null).
 	mock := NewMockAccessor(map[string]interface{}{
 		"dnssec.enabled":                 NullValue,
-		"dnssec.algorithm":              NullValue,
-		"dnssec.nx_proof":               NullValue,
+		"dnssec.algorithm":               NullValue,
+		"dnssec.nx_proof":                NullValue,
 		"zone_transfer_allowed_networks": NullValue,
-		"notify_addresses":              NullValue,
+		"notify_addresses":               NullValue,
 	})
 
 	var diags diag.Diagnostics

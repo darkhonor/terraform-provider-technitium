@@ -37,6 +37,8 @@ type TechnitiumProvider struct {
 type TechnitiumProviderModel struct {
 	ServerURL      types.String         `tfsdk:"server_url"`
 	APIToken       types.String         `tfsdk:"api_token"`
+	Username       types.String         `tfsdk:"username"`
+	Password       types.String         `tfsdk:"password"`
 	SkipTLSVerify  types.Bool           `tfsdk:"skip_tls_verify"`
 	CACertFile     types.String         `tfsdk:"ca_cert_file"`
 	CACertDir      types.String         `tfsdk:"ca_cert_dir"`
@@ -101,9 +103,22 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 				Required:    true,
 			},
 			"api_token": schema.StringAttribute{
-				Description: "Technitium API token. Can also be set via TECHNITIUM_API_TOKEN env var.",
-				Required:    true,
-				Sensitive:   true,
+				Description: "Technitium API token. Can also be set via TECHNITIUM_API_TOKEN env var. " +
+					"Either api_token or username/password must be configured.",
+				Optional:  true,
+				Sensitive: true,
+			},
+			"username": schema.StringAttribute{
+				Description: "Technitium username for session-token authentication, used when api_token " +
+					"is not set (e.g. bootstrapping a fresh server). Can also be set via " +
+					"TECHNITIUM_USERNAME env var.",
+				Optional: true,
+			},
+			"password": schema.StringAttribute{
+				Description: "Technitium password for session-token authentication. Can also be set via " +
+					"TECHNITIUM_PASSWORD env var.",
+				Optional:  true,
+				Sensitive: true,
 			},
 			"skip_tls_verify": schema.BoolAttribute{
 				Description: "Skip TLS certificate verification. Generates STIG warning when stig_compliance is enabled (SC-8).",
@@ -206,9 +221,18 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	if apiToken == "" {
 		apiToken = os.Getenv("TECHNITIUM_API_TOKEN")
 	}
-	if apiToken == "" {
-		resp.Diagnostics.AddError("Missing api_token",
-			"api_token must be set in the provider configuration or via TECHNITIUM_API_TOKEN environment variable.")
+	username := config.Username.ValueString()
+	if username == "" {
+		username = os.Getenv("TECHNITIUM_USERNAME")
+	}
+	password := config.Password.ValueString()
+	if password == "" {
+		password = os.Getenv("TECHNITIUM_PASSWORD")
+	}
+	if apiToken == "" && (username == "" || password == "") {
+		resp.Diagnostics.AddError("Missing credentials",
+			"Either api_token (TECHNITIUM_API_TOKEN) or username and password "+
+				"(TECHNITIUM_USERNAME / TECHNITIUM_PASSWORD) must be set in the provider configuration.")
 		return
 	}
 
@@ -332,6 +356,8 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	apiClient, err := client.NewClient(client.ClientConfig{
 		BaseURL:       serverURL,
 		Token:         apiToken,
+		Username:      username,
+		Password:      password,
 		SkipTLSVerify: skipTLSVerify,
 		CACertFile:    caCertFile,
 		CACertDir:     caCertDir,
@@ -341,6 +367,23 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create API client", err.Error())
 		return
+	}
+
+	// Session-token authentication when no API token is configured
+	if apiToken == "" {
+		if err := apiClient.Login(ctx); err != nil {
+			isHTTPS := strings.HasPrefix(serverURL, "https://")
+			if isHTTPS {
+				tlsErr := client.ClassifyTLSError(err)
+				if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
+					resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+					return
+				}
+			}
+			resp.Diagnostics.AddError("Unable to log in to Technitium server",
+				fmt.Sprintf("Login to %s as %q failed: %s", serverURL, username, err.Error()))
+			return
+		}
 	}
 
 	// Verify connectivity with tiered TLS error diagnostics
@@ -375,6 +418,11 @@ func (p *TechnitiumProvider) Resources(_ context.Context) []func() resource.Reso
 		NewAllowedZoneResource,
 		NewAllowedZonesResource,
 		NewCatalogMembershipResource,
+		NewSSOResource,
+		NewClusterResource,
+		NewClusterSecondaryResource,
+		NewUserResource,
+		NewAPITokenResource,
 	}
 }
 

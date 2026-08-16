@@ -67,6 +67,14 @@ type ServerSettingsResourceModel struct {
 	UdpPayloadSize               types.Int64  `tfsdk:"udp_payload_size"`
 	CacheMinimumRecordTtl        types.Int64  `tfsdk:"cache_minimum_record_ttl"`
 	CacheMaximumRecordTtl        types.Int64  `tfsdk:"cache_maximum_record_ttl"`
+	WebServiceLocalAddresses     types.List   `tfsdk:"web_service_local_addresses"`
+	WebServiceHttpPort           types.Int64  `tfsdk:"web_service_http_port"`
+	WebServiceEnableTls          types.Bool   `tfsdk:"web_service_enable_tls"`
+	WebServiceHttpToTlsRedirect  types.Bool   `tfsdk:"web_service_http_to_tls_redirect"`
+	WebServiceUseSelfSignedCert  types.Bool   `tfsdk:"web_service_use_self_signed_tls_certificate"`
+	WebServiceTlsPort            types.Int64  `tfsdk:"web_service_tls_port"`
+	WebServiceTlsCertificatePath types.String `tfsdk:"web_service_tls_certificate_path"`
+	WebServiceTlsCertificatePass types.String `tfsdk:"web_service_tls_certificate_password"`
 	// Computed
 	Version types.String `tfsdk:"version"`
 	Uptime  types.String `tfsdk:"uptime"`
@@ -239,6 +247,42 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Computed:    true,
 				Default:     int64default.StaticInt64(604800),
 			},
+			"web_service_local_addresses": schema.ListAttribute{
+				Description: "Local addresses the web service listens on.",
+				Optional:    true,
+				ElementType: types.StringType,
+			},
+			"web_service_http_port": schema.Int64Attribute{
+				Description: "Web service HTTP port.",
+				Optional:    true,
+			},
+			"web_service_enable_tls": schema.BoolAttribute{
+				Description: "Enable HTTPS for the web service. Required for cluster node-to-node " +
+					"communication with a valid certificate.",
+				Optional: true,
+			},
+			"web_service_http_to_tls_redirect": schema.BoolAttribute{
+				Description: "Redirect web service HTTP requests to HTTPS.",
+				Optional:    true,
+			},
+			"web_service_use_self_signed_tls_certificate": schema.BoolAttribute{
+				Description: "Use an automatically generated self-signed certificate for the web service.",
+				Optional:    true,
+			},
+			"web_service_tls_port": schema.Int64Attribute{
+				Description: "Web service HTTPS port.",
+				Optional:    true,
+			},
+			"web_service_tls_certificate_path": schema.StringAttribute{
+				Description: "Path (on the server) to a PKCS#12 (.pfx) certificate for the web service.",
+				Optional:    true,
+			},
+			"web_service_tls_certificate_password": schema.StringAttribute{
+				Description: "Password for the web service TLS certificate. The server never returns " +
+					"the real password, so drift in this attribute cannot be detected.",
+				Optional:  true,
+				Sensitive: true,
+			},
 			// Computed
 			"version": schema.StringAttribute{
 				Description: "Technitium DNS Server version.",
@@ -395,6 +439,14 @@ func (r *ServerSettingsResource) buildParams(ctx context.Context, model *ServerS
 	setInt(params, "udpPayloadSize", model.UdpPayloadSize)
 	setInt(params, "cacheMinimumRecordTtl", model.CacheMinimumRecordTtl)
 	setInt(params, "cacheMaximumRecordTtl", model.CacheMaximumRecordTtl)
+	setStringList(ctx, params, "webServiceLocalAddresses", model.WebServiceLocalAddresses)
+	setInt(params, "webServiceHttpPort", model.WebServiceHttpPort)
+	setBool(params, "webServiceEnableTls", model.WebServiceEnableTls)
+	setBool(params, "webServiceHttpToTlsRedirect", model.WebServiceHttpToTlsRedirect)
+	setBool(params, "webServiceUseSelfSignedTlsCertificate", model.WebServiceUseSelfSignedCert)
+	setInt(params, "webServiceTlsPort", model.WebServiceTlsPort)
+	setString(params, "webServiceTlsCertificatePath", model.WebServiceTlsCertificatePath)
+	setString(params, "webServiceTlsCertificatePassword", model.WebServiceTlsCertificatePass)
 
 	return params
 }
@@ -433,8 +485,30 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	model.CacheMinimumRecordTtl = types.Int64Value(int64(settings.CacheMinimumRecordTtl))
 	model.CacheMaximumRecordTtl = types.Int64Value(int64(settings.CacheMaximumRecordTtl))
 
+	// Web service settings: only refresh managed (non-null) attributes so
+	// unmanaged ones stay null. The certificate password is write-only.
+	if !model.WebServiceHttpPort.IsNull() {
+		model.WebServiceHttpPort = types.Int64Value(int64(settings.WebServiceHttpPort))
+	}
+	if !model.WebServiceEnableTls.IsNull() {
+		model.WebServiceEnableTls = types.BoolValue(settings.WebServiceEnableTls)
+	}
+	if !model.WebServiceHttpToTlsRedirect.IsNull() {
+		model.WebServiceHttpToTlsRedirect = types.BoolValue(settings.WebServiceHttpToTlsRedirect)
+	}
+	if !model.WebServiceUseSelfSignedCert.IsNull() {
+		model.WebServiceUseSelfSignedCert = types.BoolValue(settings.WebServiceUseSelfSignedTlsCertificate)
+	}
+	if !model.WebServiceTlsPort.IsNull() {
+		model.WebServiceTlsPort = types.Int64Value(int64(settings.WebServiceTlsPort))
+	}
+	if !model.WebServiceTlsCertificatePath.IsNull() {
+		model.WebServiceTlsCertificatePath = types.StringValue(settings.WebServiceTlsCertificatePath)
+	}
+
 	// Lists
 	readStringList(ctx, &model.RecursionNetworkACL, settings.RecursionNetworkACL)
+	readStringList(ctx, &model.WebServiceLocalAddresses, settings.WebServiceLocalAddresses)
 	readStringList(ctx, &model.BlockingBypassList, settings.BlockingBypassList)
 	readStringList(ctx, &model.CustomBlockingAddresses, settings.CustomBlockingAddresses)
 	readStringList(ctx, &model.BlockListUrls, settings.BlockListUrls)
