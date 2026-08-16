@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
@@ -21,6 +22,7 @@ import (
 )
 
 var _ resource.Resource = &ClusterSecondaryResource{}
+var _ resource.ResourceWithImportState = &ClusterSecondaryResource{}
 
 // joinMutex serializes cluster join operations: joining multiple secondaries
 // concurrently (e.g. a for_each over nodes) races on the primary's cluster
@@ -81,7 +83,7 @@ func (r *ClusterSecondaryResource) Schema(_ context.Context, _ resource.SchemaRe
 				Description: "API base URL of the Secondary node to join, e.g. http://10.0.0.11:5380.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					requiresReplaceUnlessAdopted(),
 				},
 			},
 			"node_username": schema.StringAttribute{
@@ -114,7 +116,7 @@ func (r *ClusterSecondaryResource) Schema(_ context.Context, _ resource.SchemaRe
 				Description: "Web service HTTPS URL of the cluster's Primary node, e.g. https://dns01.example.com:53443/.",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					requiresReplaceUnlessAdopted(),
 				},
 			},
 			"primary_node_ip_address": schema.StringAttribute{
@@ -358,4 +360,27 @@ func (r *ClusterSecondaryResource) Delete(ctx context.Context, req resource.Dele
 
 	resp.Diagnostics.AddError("Error removing secondary node from cluster",
 		fmt.Sprintf("leave via secondary failed (%s) and removal via primary did not succeed", err))
+}
+
+// requiresReplaceUnlessAdopted behaves like RequiresReplace, except that a
+// null state value does not force a replacement: an imported (adopted)
+// Secondary has only id/node_name in state, and filling the connection
+// attributes from configuration is not a relocation of the node.
+func requiresReplaceUnlessAdopted() planmodifier.String {
+	return stringplanmodifier.RequiresReplaceIf(
+		func(_ context.Context, req planmodifier.StringRequest, resp *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+			resp.RequiresReplace = !req.StateValue.IsNull()
+		},
+		"Replaces the node only when a previously known value changes; a null state value (fresh import) is filled in-place.",
+		"Replaces the node only when a previously known value changes; a null state value (fresh import) is filled in-place.",
+	)
+}
+
+func (r *ClusterSecondaryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Import ID is the Secondary node's DNS server domain name as listed in
+	// the cluster state (e.g. dns02.dns.example.com). Read() verifies the
+	// membership against the Primary; the connection attributes are filled
+	// from configuration on the next plan without forcing a replacement.
+	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("node_name"), req.ID)...)
 }

@@ -271,6 +271,13 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 
 	records, err := r.client.RecordGet(ctx, state.Name.ValueString(), state.Zone.ValueString())
 	if err != nil {
+		// A missing parent zone means the record is gone (e.g. the server was
+		// re-provisioned): drop it from state so the plan recreates it instead
+		// of hard-failing the refresh.
+		if isRecordAlreadyGone(err) {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		resp.Diagnostics.AddError("Error reading record", err.Error())
 		return
 	}
