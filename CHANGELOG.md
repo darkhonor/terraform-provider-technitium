@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- New resources: `technitium_cluster` (Primary initialization),
+  `technitium_cluster_secondary` (Secondary join, with `terraform import`
+  support and in-place adoption semantics for `node_url` /
+  `primary_node_url`), `technitium_sso` (OIDC SSO incl. group mapping),
+  `technitium_user`, and `technitium_api_token`.
+- `technitium_zone`: zone access options `query_access` +
+  `query_access_network_acl` (#89) and `dynamic_update` +
+  `dynamic_update_network_acl` (RFC 2136 dynamic updates).
+- `technitium_server_settings`: web service TLS settings.
+- TLS acceptance-test environment (`docker-compose.test.tls.yml`).
+
+### Fixed
+
+- `technitium_record`: refresh no longer aborts when the record's parent
+  zone is gone ("No such zone was found"); the record is removed from state
+  and planned for recreation (#88).
+
 ## [1.2.1] - 2026-07-26
 
 ### Added
