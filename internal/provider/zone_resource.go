@@ -230,15 +230,15 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	// Runs only on updates of Primary zones (creates have no prior state;
 	// replace plans are skipped inside the gate via IsReplace).
 	if plan.Type.ValueString() == "Primary" && !req.State.Raw.IsNull() {
+		// Branch on the LOCAL state-read result, and never early-return on
+		// the gate's own errors: ModifyPlan accumulates diagnostics so the
+		// zone-type validations and the STIG engine still report alongside
+		// a gate refusal (and alongside the non-returning NSS error above).
 		var state ZoneResourceModel
-		resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
-		if resp.Diagnostics.HasError() {
-			return
-		}
-		res := evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
-		applyGateDiags(res, &resp.Diagnostics)
-		if resp.Diagnostics.HasError() {
-			return
+		stateDiags := req.State.Get(ctx, &state)
+		resp.Diagnostics.Append(stateDiags...)
+		if !stateDiags.HasError() {
+			applyGateDiags(evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture())), &resp.Diagnostics)
 		}
 	}
 
@@ -386,6 +386,18 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	// Issue #96: evaluate the DNSSEC gate BEFORE any server mutation — the
+	// defense-in-depth error return must not strand half-applied options.
+	var gateRes dnssecGateResult
+	if plan.Type.ValueString() == "Primary" {
+		gateRes = evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
+		if len(gateRes.Errors) > 0 {
+			// Defense in depth; ModifyPlan already errored at plan time.
+			applyGateErrors(gateRes, &resp.Diagnostics)
+			return
+		}
+	}
+
 	// Update zone options
 	if err := r.setZoneOptions(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error updating zone options", err.Error())
@@ -396,12 +408,7 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// gateInputFromModels call ModifyPlan uses selects the action here, so
 	// the two paths cannot drift.
 	if plan.Type.ValueString() == "Primary" {
-		res := evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
-		if len(res.Errors) > 0 {
-			// Defense in depth; ModifyPlan already errored at plan time.
-			applyGateErrors(res, &resp.Diagnostics)
-			return
-		}
+		res := gateRes
 		switch res.Action {
 		case "sign":
 			if err := r.client.ZoneDNSSECSign(ctx,

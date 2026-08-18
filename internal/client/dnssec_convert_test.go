@@ -38,6 +38,9 @@ func TestZoneDNSSECConvertNxProof_CallsCorrectEndpoint(t *testing.T) {
 	if gotPath != "/api/zones/dnssec/properties/convertToNSEC" {
 		t.Fatalf("wrong endpoint: %s", gotPath)
 	}
+	if gotZone != "z.test" {
+		t.Fatalf("wrong zone param on NSEC branch: %s", gotZone)
+	}
 }
 
 func TestZoneDNSSECConvertNxProof_InvalidValueDoesNotCallServer(t *testing.T) {

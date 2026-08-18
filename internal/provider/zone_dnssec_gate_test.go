@@ -57,7 +57,7 @@ func TestEvaluateDNSSECGate(t *testing.T) {
 		}, action: "sign"},
 		{row: "2", postures: "|warn", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
 		{row: "3", postures: "silent", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
-		{row: "4", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false }, action: "none", errSub: `"unsigned"`},
+		{row: "4", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false }, action: "none", errSub: "Unsigning requires acknowledgment under strict enforcement"},
 		{row: "5", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.Acknowledgment = "unsigned" }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
 		{row: "6", postures: "any", mutate: func(in *dnssecGateInput) { in.PlanCurve = "P384" }, action: "none", errSub: "ECDSA/P384"},
 		{row: "7", postures: "|warn|silent", mutate: func(in *dnssecGateInput) { in.PlanCurve = "P384"; in.Acknowledgment = "ECDSA/P384" }, action: "resign", warnSubs: []string{"WDNS-22-000055"}},
@@ -99,6 +99,15 @@ func TestEvaluateDNSSECGate(t *testing.T) {
 			in.PlanCurve = "P384"
 			in.Acknowledgment = "ECDSA/P384"
 		}, action: "none", errSub: `"unsigned"`, notErrSub: "ECDSA/P384"},
+		{row: "rsa-nodelta", postures: "any", mutate: func(in *dnssecGateInput) {
+			in.StateAlgorithm, in.StateCurve = "RSA", ""
+			in.PlanAlgorithm, in.PlanCurve = "RSA", "P256" // schema default is vestigial for RSA
+		}, action: "none"},
+		{row: "unknown-shortcircuit", postures: "any", mutate: func(in *dnssecGateInput) {
+			in.PlanEnabled = false // would otherwise unsign/gate
+			in.Acknowledgment = "unsigned"
+			in.HasUnknown = true
+		}, action: "none"},
 		{row: "18", postures: "any", mutate: func(in *dnssecGateInput) { in.IsReplace = true; in.PlanCurve = "P384"; in.Acknowledgment = "unsigned" }, action: "none"},
 	}
 	for _, tc := range cases {

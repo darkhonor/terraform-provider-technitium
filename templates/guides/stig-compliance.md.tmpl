@@ -195,7 +195,10 @@ transition a defined, plan-time outcome (issue #96):
   going-insecure warning citing RFC 6781 Section 4.2.1.2: remove any published parent DS record
   and wait out its TTL first, and withdraw distributed trust anchors. Under `strict`
   enforcement the warning escalates to a blocking error unless the zone declares
-  `change_acknowledgment = "unsigned"`.
+  `change_acknowledgment = "unsigned"`. If you are removing the `dnssec` block entirely,
+  keep it with `enabled = false` and the acknowledgment for that apply, and remove the
+  block afterwards — the acknowledgment lives inside the block, so a bare removal has
+  nowhere to carry it.
 * The `"unsigned"` acknowledgment is **standing consent** for that zone's unsign action —
   its target space has one member, so per-transition scoping is impossible there. Remove it
   after a deliberate unsign: while it sits in config with no unsign pending, every plan warns

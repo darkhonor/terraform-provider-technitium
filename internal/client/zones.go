@@ -249,6 +249,12 @@ func (c *Client) ZoneDNSSECConvertNxProof(ctx context.Context, name, nxProof str
 	params := url.Values{
 		"zone": {name},
 	}
+	if nxProof == "NSEC3" {
+		// Match the sign path's RFC 9276 posture so conversion and signing
+		// produce the same zone shape (see issue #97 for salt exposure).
+		params.Set("iterations", "0")
+		params.Set("saltLength", "0")
+	}
 	if _, err := c.doGet(ctx, endpoint, params); err != nil {
 		return fmt.Errorf("converting zone %q to %s: %w", name, nxProof, err)
 	}
