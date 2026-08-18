@@ -103,11 +103,20 @@ func TestEvaluateDNSSECGate(t *testing.T) {
 			in.StateAlgorithm, in.StateCurve = "RSA", ""
 			in.PlanAlgorithm, in.PlanCurve = "RSA", "P256" // schema default is vestigial for RSA
 		}, action: "none"},
-		{row: "unknown-shortcircuit", postures: "any", mutate: func(in *dnssecGateInput) {
+		{row: "unknown-signed-defers-with-warning", postures: "any", mutate: func(in *dnssecGateInput) {
 			in.PlanEnabled = false // would otherwise unsign/gate
 			in.Acknowledgment = "unsigned"
 			in.HasUnknown = true
+		}, action: "none", warnSubs: []string{"deferred"}},
+		{row: "unknown-unsigned-silent-defer", postures: "any", mutate: func(in *dnssecGateInput) {
+			in.StateSigned = false
+			in.StateAlgorithm, in.StateCurve, in.StateNxProof = "", "", ""
+			in.HasUnknown = true
 		}, action: "none"},
+		{row: "invalid-target-never-resigns", postures: "any", mutate: func(in *dnssecGateInput) {
+			in.PlanAlgorithm, in.PlanCurve = "EDDSA", "P256" // dropped curve line + default
+			in.Acknowledgment = "EDDSA/P256"                 // even acknowledged: never destructive
+		}, action: "none", errSub: "not a signable combination"},
 		{row: "18", postures: "any", mutate: func(in *dnssecGateInput) { in.IsReplace = true; in.PlanCurve = "P384"; in.Acknowledgment = "unsigned" }, action: "none"},
 	}
 	for _, tc := range cases {
@@ -245,6 +254,24 @@ func TestGateInputFromModels(t *testing.T) {
 		res := evaluateDNSSECGate(in)
 		if len(res.Errors) != 1 {
 			t.Fatalf("signed state with nil dnssec model must fail closed (refusal), got %v", res)
+		}
+	})
+	t.Run("unknown_curve_sets_has_unknown", func(t *testing.T) {
+		d := block(true, "ECDSA", "P256", "NSEC3", "")
+		d.Curve = types.StringUnknown()
+		plan := mkModel("z.test", "Primary", d, "")
+		state := mkModel("z.test", "Primary", block(true, "ECDSA", "P256", "NSEC3", ""), "SignedWithNSEC3")
+		if in := gateInputFromModels(plan, state, "warn"); !in.HasUnknown {
+			t.Fatal("unknown curve must set HasUnknown")
+		}
+	})
+	t.Run("unknown_acknowledgment_sets_has_unknown", func(t *testing.T) {
+		d := block(true, "ECDSA", "P256", "NSEC3", "")
+		d.ChangeAcknowledgment = types.StringUnknown()
+		plan := mkModel("z.test", "Primary", d, "")
+		state := mkModel("z.test", "Primary", block(true, "ECDSA", "P256", "NSEC3", ""), "SignedWithNSEC3")
+		if in := gateInputFromModels(plan, state, "warn"); !in.HasUnknown {
+			t.Fatal("unknown acknowledgment must set HasUnknown")
 		}
 	})
 	t.Run("acknowledgment_null_maps_to_empty", func(t *testing.T) {

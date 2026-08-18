@@ -33,9 +33,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `technitium_zone`: changing any `dnssec` parameter on an already-signed zone was silently
-  ignored by Update, producing "Provider produced inconsistent result after apply" on every
-  attempt. (#96)
+- `technitium_zone`: changing `dnssec` `algorithm`/`curve`/`nx_proof` on an already-signed
+  ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
+  result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
+  round-trip defect — the read model cannot represent "no curve" — tracked as a follow-up
+  issue.) (#96)
 
 ## [1.2.1] - 2026-07-26
 

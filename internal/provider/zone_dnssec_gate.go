@@ -37,6 +37,23 @@ type dnssecGateResult struct {
 // "RSA" for RSA (it has no curve — the schema curve default is vestigial
 // there), "ALGORITHM/CURVE" otherwise, and the literal "unsigned" for the
 // unsign path (composed by callers, not here).
+// dnssecIdentityValid reports whether the algorithm/curve pair is one the
+// server can honour. Consulted BEFORE the acknowledgment comparison so the
+// gate can never instruct the operator to acknowledge — and then execute —
+// a destructive re-sign toward an unreachable target.
+func dnssecIdentityValid(algorithm, curve string) bool {
+	switch algorithm {
+	case "ECDSA":
+		return curve == "P256" || curve == "P384"
+	case "EDDSA":
+		return curve == "ED25519" || curve == "ED448"
+	case "RSA":
+		return true // RSA has no curve; the schema default is vestigial
+	default:
+		return false
+	}
+}
+
 func dnssecTargetIdentity(algorithm, curve string) string {
 	if algorithm == "RSA" {
 		return "RSA"
@@ -89,7 +106,18 @@ func evaluateDNSSECGate(in dnssecGateInput) dnssecGateResult {
 	// plan values (values-from-elsewhere unresolved at plan time) also
 	// short-circuit: ValueBool()/ValueString() collapse unknown to false/"",
 	// and deciding on those fabricates deltas and false unsign warnings.
-	if in.IsReplace || in.HasUnknown {
+	if in.IsReplace {
+		return res
+	}
+	if in.HasUnknown {
+		if in.StateSigned {
+			res.Warnings = append(res.Warnings, gateDiag{
+				Summary: "DNSSEC change checks deferred",
+				Detail: "One or more dnssec values are not known at plan time; a destructive transition " +
+					"may be evaluated at apply, and under strict enforcement the apply may be blocked. " +
+					"Resolve the values (or apply their source first) to see the full plan-time analysis.",
+			})
+		}
 		return res
 	}
 
@@ -124,6 +152,16 @@ func evaluateDNSSECGate(in dnssecGateInput) dnssecGateResult {
 		nxChanged := in.PlanNxProof != in.StateNxProof
 		switch {
 		case algoChanged:
+			if !dnssecIdentityValid(in.PlanAlgorithm, in.PlanCurve) {
+				res.Errors = append(res.Errors, gateDiag{
+					Summary: "Invalid DNSSEC algorithm/curve combination",
+					Detail: fmt.Sprintf("%s/%s is not a signable combination. Valid: ECDSA with P256 or "+
+						"P384; EDDSA with ED25519 or ED448; RSA (curve ignored). If you removed the curve "+
+						"line, restate the zone's actual curve — the schema default (P256) may not match.",
+						in.PlanAlgorithm, in.PlanCurve),
+				})
+				break
+			}
 			target := dnssecTargetIdentity(in.PlanAlgorithm, in.PlanCurve)
 			if in.Acknowledgment == target {
 				res.Action = "resign"
@@ -133,8 +171,7 @@ func evaluateDNSSECGate(in dnssecGateInput) dnssecGateResult {
 					Summary: "In-place DNSSEC parameter change requires acknowledgment",
 					Detail: fmt.Sprintf("Changing the signing algorithm/curve of a signed zone destroys and "+
 						"regenerates its keys; the server has no in-place change. Either declare "+
-						"change_acknowledgment = %q to authorize an unsign/re-sign to the new parameters "+
-						"(DS records and trust anchors must then be re-exported), or follow the manual "+
+						"change_acknowledgment = %q to authorize an unsign/re-sign to the new parameters, or follow the manual "+
 						"procedure: set dnssec.enabled = false, apply, then re-enable with the new "+
 						"parameters (under strict enforcement that first step needs "+
 						"change_acknowledgment = \"unsigned\", kept on the dnssec block for that apply). "+

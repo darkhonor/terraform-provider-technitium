@@ -116,7 +116,7 @@ The `dnssec` block supports the following arguments:
 
 * `nx_proof` - (Optional, String) Proof of non-existence mechanism. Valid values: `NSEC`, `NSEC3`. Default: `"NSEC3"`. Changing this on a signed zone converts in place — no key regeneration.
 
-* `change_acknowledgment` - (Optional, String) Operator acknowledgment authorizing a destructive DNSSEC transition on this zone. Set to `"<ALGORITHM>/<CURVE>"` (e.g. `"ECDSA/P384"`; bare `"RSA"` for RSA) to authorize an unsign/re-sign to those parameters, (compared literally and case-sensitively, exactly as the provider spells the values), or `"unsigned"` to authorize unsigning (standing consent — remove after use; a stale value draws a removal warning on every plan except under `silent` enforcement). Required for in-place `algorithm`/`curve` changes in every posture, and for unsigning under `strict` enforcement. See the [STIG Compliance Guide](../guides/stig-compliance.md).
+* `change_acknowledgment` - (Optional, String) Operator acknowledgment authorizing a destructive DNSSEC transition on this zone. Set to `"<ALGORITHM>/<CURVE>"` (e.g. `"ECDSA/P384"`; bare `"RSA"` for RSA) to authorize an unsign/re-sign to those parameters (the value is compared literally and case-sensitively, exactly as the provider spells it), or `"unsigned"` to authorize unsigning (standing consent — remove after use; a stale value draws a removal warning on every plan except under `silent` enforcement). Required for in-place `algorithm`/`curve` changes in every posture, and for unsigning under `strict` enforcement. See the [STIG Compliance Guide](../guides/stig-compliance.md).
 
 ## Attributes Reference
 

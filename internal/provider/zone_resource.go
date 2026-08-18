@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -157,12 +160,18 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("ECDSA"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("ECDSA", "EDDSA", "RSA"),
+						},
 					},
 					"curve": schema.StringAttribute{
 						Description: "Curve for ECDSA (P256, P384) or EDDSA (ED25519, ED448). Default: P256.",
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("P256"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("P256", "P384", "ED25519", "ED448"),
+						},
 					},
 					"nx_proof": schema.StringAttribute{
 						Description: "NSEC/NSEC3 proof of non-existence. Maps to STIG BIND-9X-001270 (SC-20).",
@@ -408,8 +417,14 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// gateInputFromModels call ModifyPlan uses selects the action here, so
 	// the two paths cannot drift.
 	if plan.Type.ValueString() == "Primary" {
-		res := gateRes
-		switch res.Action {
+		// Cheap insurance: values should be resolved by apply; if not, do not
+		// silently no-op a declared transition.
+		if gateInputFromModels(&plan, &state, r.posture()).HasUnknown && gateRes.Action != "none" {
+			resp.Diagnostics.AddError("DNSSEC values unresolved at apply",
+				"dnssec values were still unknown at apply time; refusing to act on them.")
+			return
+		}
+		switch gateRes.Action {
 		case "sign":
 			if err := r.client.ZoneDNSSECSign(ctx,
 				plan.Name.ValueString(),
