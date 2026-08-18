@@ -322,7 +322,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// Handle DNSSEC signing (NSS P256→P384 upgrade already handled in ModifyPlan)
+	// Handle DNSSEC signing at create.
 	if plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() && plan.Type.ValueString() == "Primary" {
 		err := r.client.ZoneDNSSECSign(ctx,
 			plan.Name.ValueString(),
@@ -392,27 +392,61 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// Handle DNSSEC changes
+	// Handle DNSSEC changes (issue #96): gate-driven dispatch. The same
+	// gateInputFromModels call ModifyPlan uses selects the action here, so
+	// the two paths cannot drift.
 	if plan.Type.ValueString() == "Primary" {
-		planDNSSECEnabled := plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool()
-		stateDNSSECEnabled := state.DNSSECStatus.ValueString() != "Unsigned" && state.DNSSECStatus.ValueString() != ""
-
-		if planDNSSECEnabled && !stateDNSSECEnabled {
-			// Sign zone
-			err := r.client.ZoneDNSSECSign(ctx,
+		res := evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
+		if len(res.Errors) > 0 {
+			// Defense in depth; ModifyPlan already errored at plan time.
+			applyGateErrors(res, &resp.Diagnostics)
+			return
+		}
+		switch res.Action {
+		case "sign":
+			if err := r.client.ZoneDNSSECSign(ctx,
 				plan.Name.ValueString(),
 				plan.DNSSEC.Algorithm.ValueString(),
 				plan.DNSSEC.Curve.ValueString(),
 				plan.DNSSEC.NxProof.ValueString(),
-			)
-			if err != nil {
+			); err != nil {
 				resp.Diagnostics.AddError("Error signing zone with DNSSEC", err.Error())
 				return
 			}
-		} else if !planDNSSECEnabled && stateDNSSECEnabled {
-			// Unsign zone
+		case "unsign":
 			if err := r.client.ZoneDNSSECUnsign(ctx, plan.Name.ValueString()); err != nil {
 				resp.Diagnostics.AddError("Error unsigning zone", err.Error())
+				return
+			}
+		case "convert_nxproof":
+			if err := r.client.ZoneDNSSECConvertNxProof(ctx, plan.Name.ValueString(), plan.DNSSEC.NxProof.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Error converting zone proof of non-existence", err.Error())
+				return
+			}
+		case "resign":
+			if err := r.client.ZoneDNSSECUnsign(ctx, plan.Name.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Error unsigning zone to change DNSSEC parameters", err.Error())
+				return
+			}
+			if err := r.client.ZoneDNSSECSign(ctx,
+				plan.Name.ValueString(),
+				plan.DNSSEC.Algorithm.ValueString(),
+				plan.DNSSEC.Curve.ValueString(),
+				plan.DNSSEC.NxProof.ValueString(),
+			); err != nil {
+				// Partial-failure recovery: the zone is now UNSIGNED on the
+				// server. Persist the real state before returning so the next
+				// plan sees unsigned and converges via a fresh sign — without
+				// this, stale signed-state deadlocks the operator.
+				resp.Diagnostics.AddError("Error re-signing zone with new DNSSEC parameters",
+					"The zone was unsigned but re-signing failed — it is currently UNSIGNED on the server. "+
+						"The refreshed state has been saved; the next apply will sign it with the declared parameters. "+
+						"Original error: "+err.Error())
+				if rerr := r.readZoneState(ctx, &plan); rerr != nil {
+					resp.Diagnostics.AddError("Error refreshing state after failed re-sign", rerr.Error())
+					return
+				}
+				resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 				return
 			}
 		}
