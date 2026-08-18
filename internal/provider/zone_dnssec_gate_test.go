@@ -21,8 +21,6 @@ func signedP256() dnssecGateInput {
 	}
 }
 
-const allPostures = "|warn|silent|strict" // leading empty element = no-block posture
-
 func postures(spec string) []string {
 	if spec == "any" {
 		return []string{"", "warn", "silent", "strict"}
@@ -43,7 +41,10 @@ type gateCase struct {
 
 func TestEvaluateDNSSECGate(t *testing.T) {
 	cases := []gateCase{
-		{row: "1", postures: "any", mutate: func(in *dnssecGateInput) { in.StateSigned = false; in.StateAlgorithm, in.StateCurve, in.StateNxProof = "", "", "" }, action: "sign"},
+		{row: "1", postures: "any", mutate: func(in *dnssecGateInput) {
+			in.StateSigned = false
+			in.StateAlgorithm, in.StateCurve, in.StateNxProof = "", "", ""
+		}, action: "sign"},
 		{row: "1b", postures: "|warn|strict", mutate: func(in *dnssecGateInput) {
 			in.StateSigned = false
 			in.StateAlgorithm, in.StateCurve, in.StateNxProof = "", "", ""
@@ -70,14 +71,34 @@ func TestEvaluateDNSSECGate(t *testing.T) {
 		{row: "13", postures: "silent", mutate: func(in *dnssecGateInput) { in.Acknowledgment = "unsigned" }, action: "none"},
 		{row: "14", postures: "any", mutate: func(in *dnssecGateInput) { in.Acknowledgment = "ECDSA/P256" }, action: "none"},
 		{row: "15", postures: "any", mutate: func(in *dnssecGateInput) { in.StateSigned = false; in.PlanEnabled = false }, action: "none"},
-		{row: "15b", postures: "|warn|strict", mutate: func(in *dnssecGateInput) { in.StateSigned = false; in.PlanEnabled = false; in.Acknowledgment = "unsigned" }, action: "none", warnSubs: []string{"should be removed"}},
-		{row: "15c", postures: "silent", mutate: func(in *dnssecGateInput) { in.StateSigned = false; in.PlanEnabled = false; in.Acknowledgment = "unsigned" }, action: "none"},
+		{row: "15b", postures: "|warn|strict", mutate: func(in *dnssecGateInput) {
+			in.StateSigned = false
+			in.PlanEnabled = false
+			in.Acknowledgment = "unsigned"
+		}, action: "none", warnSubs: []string{"should be removed"}},
+		{row: "15c", postures: "silent", mutate: func(in *dnssecGateInput) {
+			in.StateSigned = false
+			in.PlanEnabled = false
+			in.Acknowledgment = "unsigned"
+		}, action: "none"},
 		{row: "16", postures: "|warn|silent", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.Acknowledgment = "unsigned" }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
 		{row: "17a", postures: "|warn|silent", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.PlanCurve = "P384" }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
 		{row: "17b", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.PlanCurve = "P384" }, action: "none", errSub: `"unsigned"`, notErrSub: "ECDSA/P384"},
-		{row: "17c", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.PlanCurve = "P384"; in.Acknowledgment = "unsigned" }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
-		{row: "17d-i", postures: "|warn|silent", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.PlanCurve = "P384"; in.Acknowledgment = "ECDSA/P384" }, action: "unsign", warnSubs: []string{"4.2.1.2"}},
-		{row: "17d-ii", postures: "strict", mutate: func(in *dnssecGateInput) { in.PlanEnabled = false; in.PlanCurve = "P384"; in.Acknowledgment = "ECDSA/P384" }, action: "none", errSub: `"unsigned"`, notErrSub: "ECDSA/P384"},
+		{row: "17c", postures: "strict", mutate: func(in *dnssecGateInput) {
+			in.PlanEnabled = false
+			in.PlanCurve = "P384"
+			in.Acknowledgment = "unsigned"
+		}, action: "unsign", warnSubs: []string{"4.2.1.2"}},
+		{row: "17d-i", postures: "|warn|silent", mutate: func(in *dnssecGateInput) {
+			in.PlanEnabled = false
+			in.PlanCurve = "P384"
+			in.Acknowledgment = "ECDSA/P384"
+		}, action: "unsign", warnSubs: []string{"4.2.1.2"}},
+		{row: "17d-ii", postures: "strict", mutate: func(in *dnssecGateInput) {
+			in.PlanEnabled = false
+			in.PlanCurve = "P384"
+			in.Acknowledgment = "ECDSA/P384"
+		}, action: "none", errSub: `"unsigned"`, notErrSub: "ECDSA/P384"},
 		{row: "18", postures: "any", mutate: func(in *dnssecGateInput) { in.IsReplace = true; in.PlanCurve = "P384"; in.Acknowledgment = "unsigned" }, action: "none"},
 	}
 	for _, tc := range cases {
