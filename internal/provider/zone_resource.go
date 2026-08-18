@@ -225,6 +225,23 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 				"Set dnssec { curve = \"P384\" } to comply.")
 	}
 
+	// Issue #96: posture-scaled DNSSEC change gate — plan-time diagnostics
+	// for parameter changes, unsign transitions, and stale acknowledgments.
+	// Runs only on updates of Primary zones (creates have no prior state;
+	// replace plans are skipped inside the gate via IsReplace).
+	if plan.Type.ValueString() == "Primary" && !req.State.Raw.IsNull() {
+		var state ZoneResourceModel
+		resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+		res := evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
+		applyGateDiags(res, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
+	}
+
 	// Zone type validation for zone_transfer_tsig_key_names
 	if !plan.ZoneTransferTsigKeyNames.IsNull() && !plan.ZoneTransferTsigKeyNames.IsUnknown() {
 		zoneType := plan.Type.ValueString()
