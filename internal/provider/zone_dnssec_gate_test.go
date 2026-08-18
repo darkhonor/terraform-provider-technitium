@@ -175,6 +175,24 @@ func TestDNSSECTargetIdentity(t *testing.T) {
 	}
 }
 
+func TestDNSSECIdentityValid(t *testing.T) {
+	for _, tc := range []struct {
+		alg, curve string
+		want       bool
+	}{
+		{"ECDSA", "P256", true}, {"ECDSA", "P384", true},
+		{"ECDSA", "ED25519", false}, {"ECDSA", "ED448", false},
+		{"EDDSA", "ED25519", true}, {"EDDSA", "ED448", true},
+		{"EDDSA", "P256", false}, {"EDDSA", "P384", false},
+		{"RSA", "P256", true}, {"RSA", "", true},
+		{"DSA", "", false},
+	} {
+		if got := dnssecIdentityValid(tc.alg, tc.curve); got != tc.want {
+			t.Fatalf("dnssecIdentityValid(%q,%q) = %v, want %v", tc.alg, tc.curve, got, tc.want)
+		}
+	}
+}
+
 func TestApplyGateDiags(t *testing.T) {
 	res := dnssecGateResult{
 		Errors:   []gateDiag{{Summary: "e1", Detail: "d1"}},
@@ -265,13 +283,26 @@ func TestGateInputFromModels(t *testing.T) {
 			t.Fatal("unknown curve must set HasUnknown")
 		}
 	})
-	t.Run("unknown_acknowledgment_sets_has_unknown", func(t *testing.T) {
-		d := block(true, "ECDSA", "P256", "NSEC3", "")
-		d.ChangeAcknowledgment = types.StringUnknown()
-		plan := mkModel("z.test", "Primary", d, "")
-		state := mkModel("z.test", "Primary", block(true, "ECDSA", "P256", "NSEC3", ""), "SignedWithNSEC3")
-		if in := gateInputFromModels(plan, state, "warn"); !in.HasUnknown {
-			t.Fatal("unknown acknowledgment must set HasUnknown")
+	t.Run("unknown_any_attribute_sets_has_unknown", func(t *testing.T) {
+		for _, name := range []string{"enabled", "algorithm", "curve", "nx_proof", "change_acknowledgment"} {
+			d := block(true, "ECDSA", "P256", "NSEC3", "")
+			switch name {
+			case "enabled":
+				d.Enabled = types.BoolUnknown()
+			case "algorithm":
+				d.Algorithm = types.StringUnknown()
+			case "curve":
+				d.Curve = types.StringUnknown()
+			case "nx_proof":
+				d.NxProof = types.StringUnknown()
+			case "change_acknowledgment":
+				d.ChangeAcknowledgment = types.StringUnknown()
+			}
+			plan := mkModel("z.test", "Primary", d, "")
+			state := mkModel("z.test", "Primary", block(true, "ECDSA", "P256", "NSEC3", ""), "SignedWithNSEC3")
+			if in := gateInputFromModels(plan, state, "warn"); !in.HasUnknown {
+				t.Fatalf("unknown %s must set HasUnknown", name)
+			}
 		}
 	})
 	t.Run("acknowledgment_null_maps_to_empty", func(t *testing.T) {

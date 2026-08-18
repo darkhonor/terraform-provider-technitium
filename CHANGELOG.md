@@ -14,6 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   target, `"unsigned"` for unsigning). (#96)
 - `technitium_zone`: `nx_proof` changes on a signed zone now convert in place
   (NSEC <-> NSEC3) with no key regeneration. (#96)
+- `technitium_zone`: `dnssec.algorithm` and `dnssec.curve` are now validated against their
+  allowed values at plan time, and invalid algorithm/curve combinations (e.g. `EDDSA` with
+  `P256`) are refused before any destructive action. (#96)
 
 ### Changed
 
@@ -36,8 +39,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_zone`: changing `dnssec` `algorithm`/`curve`/`nx_proof` on an already-signed
   ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
   result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
-  round-trip defect — the read model cannot represent "no curve" — tracked as a follow-up
-  issue.) (#96)
+  round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
 
 ## [1.2.1] - 2026-07-26
 

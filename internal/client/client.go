@@ -45,7 +45,7 @@ func (e *APIError) IsInvalidToken() bool {
 type ClientConfig struct {
 	BaseURL       string
 	Token         string
-	SkipTLSVerify bool   // default: false
+	SkipTLSVerify bool // default: false
 	CACertFile    string
 	CACertDir     string
 	TLSServerName string

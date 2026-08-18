@@ -123,6 +123,14 @@ func evaluateDNSSECGate(in dnssecGateInput) dnssecGateResult {
 
 	switch {
 	case !in.StateSigned && in.PlanEnabled: // Rule 2
+		if !dnssecIdentityValid(in.PlanAlgorithm, in.PlanCurve) {
+			res.Errors = append(res.Errors, gateDiag{
+				Summary: "Invalid DNSSEC algorithm/curve combination",
+				Detail: fmt.Sprintf("%s/%s is not a signable combination. Valid: ECDSA with P256 or P384; "+
+					"EDDSA with ED25519 or ED448; RSA (curve ignored).", in.PlanAlgorithm, in.PlanCurve),
+			})
+			break
+		}
 		res.Action = "sign"
 	case !in.StateSigned && !in.PlanEnabled: // Rule 3
 		res.Action = "none"

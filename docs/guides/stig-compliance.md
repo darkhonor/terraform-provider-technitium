@@ -192,7 +192,9 @@ transition a defined, plan-time outcome (issue #96):
   parameters. With the acknowledgment, the provider unsigns and re-signs; export the new DS
   records and redistribute trust anchors afterwards (WDNS-22-000055/WDNS-22-000056).
 * **Unsigning** (`enabled = false`, or removing the `dnssec` block) always draws a plan-time
-  going-insecure warning citing RFC 6781 Section 4.2.1.2: remove any published parent DS record
+  going-insecure warning citing RFC 6781 Section 4.2.1.2 (unless the block's values are not
+  known at plan time — values-from-elsewhere — in which case the plan warns that the check is
+  deferred to apply): remove any published parent DS record
   and wait out its TTL first, and withdraw distributed trust anchors. Under `strict`
   enforcement the warning escalates to a blocking error unless the zone declares
   `change_acknowledgment = "unsigned"`. If you are removing the `dnssec` block entirely,

@@ -417,13 +417,10 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	// gateInputFromModels call ModifyPlan uses selects the action here, so
 	// the two paths cannot drift.
 	if plan.Type.ValueString() == "Primary" {
-		// Cheap insurance: values should be resolved by apply; if not, do not
-		// silently no-op a declared transition.
-		if gateInputFromModels(&plan, &state, r.posture()).HasUnknown && gateRes.Action != "none" {
-			resp.Diagnostics.AddError("DNSSEC values unresolved at apply",
-				"dnssec values were still unknown at apply time; refusing to act on them.")
-			return
-		}
+		// No unresolved-values guard here: if HasUnknown were true the gate
+		// returned Action "none" (two-function tautology — the guard would be
+		// dead code), and Terraform's apply contract resolves plan unknowns
+		// before Update runs.
 		switch gateRes.Action {
 		case "sign":
 			if err := r.client.ZoneDNSSECSign(ctx,
@@ -462,7 +459,8 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 				// this, stale signed-state deadlocks the operator.
 				resp.Diagnostics.AddError("Error re-signing zone with new DNSSEC parameters",
 					"The zone was unsigned but re-signing failed — it is currently UNSIGNED on the server. "+
-						"The refreshed state has been saved; the next apply will sign it with the declared parameters. "+
+						"The refreshed state has been saved; the next apply will retry the sign with the declared "+
+						"parameters — if the server rejected a parameter, correct it before re-applying. "+
 						"Original error: "+err.Error())
 				if rerr := r.readZoneState(ctx, &plan); rerr != nil {
 					resp.Diagnostics.AddError("Error refreshing state after failed re-sign", rerr.Error())

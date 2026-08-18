@@ -28,36 +28,36 @@ var ValidBlockingTypes = []string{
 
 // ServerSettings represents the Technitium server settings from the API.
 type ServerSettings struct {
-	Version                    string   `json:"version"`
-	Uptimestamp                string   `json:"uptimestamp"`
-	DnsServerDomain            string   `json:"dnsServerDomain"`
-	DnssecValidation           bool     `json:"dnssecValidation"`
-	Recursion                  string   `json:"recursion"`
-	RecursionNetworkACL        []string `json:"recursionNetworkACL"`
-	QnameMinimization          bool     `json:"qnameMinimization"`
-	RandomizeName              bool     `json:"randomizeName"`
-	LogQueries                 bool     `json:"logQueries"`
-	LoggingType                string   `json:"loggingType"`
-	MaxLogFileDays             int      `json:"maxLogFileDays"`
-	EnableBlocking              bool     `json:"enableBlocking"`
-	AllowTxtBlockingReport      bool     `json:"allowTxtBlockingReport"`
-	BlockingBypassList          []string `json:"blockingBypassList"`
-	BlockingType                string   `json:"blockingType"`
-	BlockingAnswerTTL           int      `json:"blockingAnswerTtl"`
-	CustomBlockingAddresses     []string `json:"customBlockingAddresses"`
-	BlockListUrls               []string `json:"blockListUrls"`
-	BlockListUpdateIntervalHours int     `json:"blockListUpdateIntervalHours"`
-	ServeStale                  bool     `json:"serveStale"`
-	Forwarders                 []string `json:"forwarders"`
-	ForwarderProtocol          string   `json:"forwarderProtocol"`
-	EnableDnsOverTls           bool     `json:"enableDnsOverTls"`
-	EnableDnsOverHttps         bool     `json:"enableDnsOverHttps"`
-	ZoneTransferAllowedNetworks []string `json:"zoneTransferAllowedNetworks"`
-	NotifyAllowedNetworks      []string `json:"notifyAllowedNetworks"`
-	UdpPayloadSize             int      `json:"udpPayloadSize"`
-	CacheMinimumRecordTtl      int      `json:"cacheMinimumRecordTtl"`
-	CacheMaximumRecordTtl      int      `json:"cacheMaximumRecordTtl"`
-	TsigKeys                   []TSIGKey `json:"tsigKeys"`
+	Version                      string    `json:"version"`
+	Uptimestamp                  string    `json:"uptimestamp"`
+	DnsServerDomain              string    `json:"dnsServerDomain"`
+	DnssecValidation             bool      `json:"dnssecValidation"`
+	Recursion                    string    `json:"recursion"`
+	RecursionNetworkACL          []string  `json:"recursionNetworkACL"`
+	QnameMinimization            bool      `json:"qnameMinimization"`
+	RandomizeName                bool      `json:"randomizeName"`
+	LogQueries                   bool      `json:"logQueries"`
+	LoggingType                  string    `json:"loggingType"`
+	MaxLogFileDays               int       `json:"maxLogFileDays"`
+	EnableBlocking               bool      `json:"enableBlocking"`
+	AllowTxtBlockingReport       bool      `json:"allowTxtBlockingReport"`
+	BlockingBypassList           []string  `json:"blockingBypassList"`
+	BlockingType                 string    `json:"blockingType"`
+	BlockingAnswerTTL            int       `json:"blockingAnswerTtl"`
+	CustomBlockingAddresses      []string  `json:"customBlockingAddresses"`
+	BlockListUrls                []string  `json:"blockListUrls"`
+	BlockListUpdateIntervalHours int       `json:"blockListUpdateIntervalHours"`
+	ServeStale                   bool      `json:"serveStale"`
+	Forwarders                   []string  `json:"forwarders"`
+	ForwarderProtocol            string    `json:"forwarderProtocol"`
+	EnableDnsOverTls             bool      `json:"enableDnsOverTls"`
+	EnableDnsOverHttps           bool      `json:"enableDnsOverHttps"`
+	ZoneTransferAllowedNetworks  []string  `json:"zoneTransferAllowedNetworks"`
+	NotifyAllowedNetworks        []string  `json:"notifyAllowedNetworks"`
+	UdpPayloadSize               int       `json:"udpPayloadSize"`
+	CacheMinimumRecordTtl        int       `json:"cacheMinimumRecordTtl"`
+	CacheMaximumRecordTtl        int       `json:"cacheMaximumRecordTtl"`
+	TsigKeys                     []TSIGKey `json:"tsigKeys"`
 }
 
 // SettingsGet returns the current server settings.
