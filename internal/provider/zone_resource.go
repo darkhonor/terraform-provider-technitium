@@ -63,6 +63,11 @@ type DNSSECModel struct {
 	Algorithm types.String `tfsdk:"algorithm"`
 	Curve     types.String `tfsdk:"curve"`
 	NxProof   types.String `tfsdk:"nx_proof"`
+	// ChangeAcknowledgment is deliberately Optional-only (not Computed, no
+	// default), breaking the block's Optional+Computed convention: Computed
+	// is what lets the framework write a value the operator did not declare,
+	// and this attribute must always equal declared config (issue #96).
+	ChangeAcknowledgment types.String `tfsdk:"change_acknowledgment"`
 }
 
 func (r *ZoneResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -164,6 +169,14 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("NSEC3"),
+					},
+					"change_acknowledgment": schema.StringAttribute{
+						Description: "Operator acknowledgment authorizing a destructive DNSSEC transition on this zone. " +
+							"Set to \"<ALGORITHM>/<CURVE>\" (e.g. \"ECDSA/P384\"; bare \"RSA\" for RSA) to authorize an " +
+							"unsign/re-sign to those parameters, or \"unsigned\" to authorize unsigning (standing " +
+							"consent - remove after use). Required under stig_compliance enforcement \"strict\"; " +
+							"always required for in-place algorithm/curve changes. See the STIG compliance guide.",
+						Optional: true,
 					},
 				},
 			},
