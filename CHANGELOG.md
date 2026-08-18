@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
+  acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
+  target, `"unsigned"` for unsigning). (#96)
+- `technitium_zone`: `nx_proof` changes on a signed zone now convert in place
+  (NSEC <-> NSEC3) with no key regeneration. (#96)
+
+### Changed
+
+- **Behavior change for every configuration whose `stig_compliance` block resolves
+  `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
+  never `enabled`, since enforcement defaults to `strict` whenever the block exists:
+  unsigning a signed zone (`dnssec.enabled = false`, or removing the block) is now blocked
+  at plan time until the zone declares `change_acknowledgment = "unsigned"`. Previously the
+  unsign was ungated. In all postures, unsigning now draws a plan-time going-insecure
+  warning (RFC 6781 §4.2.1.2), and `silent` enforcement no longer suppresses these
+  action-consequence notices (it still suppresses STIG findings and the stale-acknowledgment
+  removal warning). (#96)
+- In-place `dnssec.algorithm`/`curve` changes on a signed zone are now refused at plan time
+  with a diagnostic naming the acknowledgment and the manual procedure, instead of being
+  silently ignored and failing with "Provider produced inconsistent result after apply". With
+  the matching acknowledgment the provider performs the unsign/re-sign. (#96)
+
+### Fixed
+
+- `technitium_zone`: changing any `dnssec` parameter on an already-signed zone was silently
+  ignored by Update, producing "Provider produced inconsistent result after apply" on every
+  attempt. (#96)
+
 ## [1.2.1] - 2026-07-26
 
 ### Added

@@ -84,7 +84,9 @@ NSS environments (`nss = true`) treat these conditions as hard errors regardless
 The `stig_compliance` block activates the provider's built-in DNS STIG validation engine.
 When enabled, every resource plan and apply is checked against applicable DNS-REQ controls.
 Findings are reported as Terraform diagnostics — errors in `strict` mode (default), warnings
-in `warn` mode, and suppressed in `silent` mode.
+in `warn` mode, and suppressed in `silent` mode. (Action-consequence notices for destructive
+DNSSEC changes are resource-emitted, sit outside the STIG finding pipeline, and still warn
+under `silent` — see the STIG compliance guide.)
 
 ```hcl
 provider "technitium" {
@@ -118,7 +120,7 @@ For NSS environments, replace `baseline` with explicit per-objective levels:
 
 * `strict` (default) — STIG findings block `terraform apply`. Use in production and CI/CD pipelines.
 * `warn` — Findings are reported as warnings but do not block apply. Useful during migration.
-* `silent` — All STIG findings are suppressed. Not recommended except for testing.
+* `silent` — All STIG findings are suppressed (the destructive-DNSSEC-change notices still warn — they are action-consequence notices, not findings). Not recommended except for testing.
 
 **Suppression:** Individual DNS-REQ controls can be suppressed by ID via the `suppress` list.
 Suppressed controls emit warnings instead of errors, creating an auditable record without
@@ -172,7 +174,9 @@ The `stig_compliance` block is optional. When omitted, no STIG validation is per
 
   * `enforcement` - (Optional, String) STIG enforcement policy. Controls whether findings
     block apply or are reported as warnings. Default: `"strict"`.
-    Valid values are `"strict"`, `"warn"`, `"silent"`.
+    Valid values are `"strict"`, `"warn"`, `"silent"`. Under `"strict"`, destructive DNSSEC
+    transitions (unsigning, key-regenerating re-signs) additionally require a per-zone
+    `change_acknowledgment`; under `"silent"`, their notices still warn.
 
   * `suppress` - (Optional, List of String) List of DNS-REQ requirement IDs to suppress.
     Suppressed findings are downgraded to warnings instead of errors, creating an auditable

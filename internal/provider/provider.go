@@ -148,7 +148,7 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 						Optional:    true,
 					},
 					"enforcement": schema.StringAttribute{
-						Description: "STIG enforcement policy: strict (errors block apply), warn (warnings only), silent (suppress all). Default: strict.",
+						Description: "STIG enforcement policy: strict (errors block apply), warn (warnings only), silent (suppress all STIG findings; action-consequence notices for destructive DNSSEC changes still warn). Default: strict.",
 						Optional:    true,
 					},
 					"suppress": schema.ListAttribute{
