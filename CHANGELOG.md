@@ -41,6 +41,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
   round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
 
+### Security
+
+- The acceptance-test suite no longer carries a hardcoded API token literal. The helper that
+  resolves the test credential had a baked-in 64-character fallback used whenever
+  `TECHNITIUM_API_TOKEN` was unset. The value authenticated only to a disposable test
+  container and does not survive a container restart, so nothing needs rotating, but a
+  committed credential-shaped literal is flagged by secret scanners and reads badly in a
+  provider whose purpose is compliance tooling. An unset token now surfaces the provider's own
+  `Missing api_token` diagnostic naming the environment variable, instead of a confusing
+  invalid-token failure against whatever server is listening. A regression test scans the
+  package for credential-shaped literals so one cannot be reintroduced. No production code
+  changes. (#108)
+
 ## [1.2.1] - 2026-07-26
 
 ### Added

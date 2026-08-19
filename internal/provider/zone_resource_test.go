@@ -599,13 +599,16 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha512_256(t *testing.T) {
 	})
 }
 
+// testAccAPIToken returns the API token acceptance tests authenticate with.
+// The token is provisioned when the Docker test instance starts and exported
+// by the testacc make targets; set it via .env.test or TECHNITIUM_API_TOKEN.
+//
+// There is deliberately no fallback value. An unset token yields an empty
+// string, which the provider reports as its own "Missing api_token"
+// diagnostic naming the environment variable. Substituting a baked-in
+// credential instead produces a confusing invalid-token failure against
+// whatever server happens to be listening, and puts a credential-shaped
+// literal in the repository (#108).
 func testAccAPIToken() string {
-	// Read from environment — token is provisioned when the Docker test instance starts.
-	// Set via .env.test or TECHNITIUM_API_TOKEN env var.
-	token := os.Getenv("TECHNITIUM_API_TOKEN")
-	if token == "" {
-		// Fallback for CI or manual runs
-		token = "7b34e85a6f9bdf8dacf8513024463408c51980663e47c1cd522f2f9071686388"
-	}
-	return token
+	return os.Getenv("TECHNITIUM_API_TOKEN")
 }
