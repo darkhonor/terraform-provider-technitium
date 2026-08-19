@@ -54,6 +54,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   package for credential-shaped literals so one cannot be reintroduced. No production code
   changes. (#108)
 
+### Dependencies
+
+- chore(deps): update actions/checkout action to v7.0.1 ([#86])
+- chore(deps): update ossf/scorecard-action action to v2.4.4 ([#87])
+- chore(deps): update github/codeql-action action to v4.37.4 ([#91])
+- chore(deps): update github/codeql-action action to v4.37.6 ([#92])
+- chore(deps): update actions/attest-build-provenance action to v4.2.2 ([#93])
+- chore(deps): update github/codeql-action action to v4.37.7 ([#95])
+
 ## [1.2.1] - 2026-07-26
 
 ### Added
@@ -430,3 +439,9 @@ settings preserve the validator coverage for future runs.
 [#81]: https://github.com/darkhonor/terraform-provider-technitium/pull/81
 [#82]: https://github.com/darkhonor/terraform-provider-technitium/pull/82
 [#83]: https://github.com/darkhonor/terraform-provider-technitium/pull/83
+[#86]: https://github.com/darkhonor/terraform-provider-technitium/pull/86
+[#87]: https://github.com/darkhonor/terraform-provider-technitium/pull/87
+[#91]: https://github.com/darkhonor/terraform-provider-technitium/pull/91
+[#92]: https://github.com/darkhonor/terraform-provider-technitium/pull/92
+[#93]: https://github.com/darkhonor/terraform-provider-technitium/pull/93
+[#95]: https://github.com/darkhonor/terraform-provider-technitium/pull/95
