@@ -19,7 +19,7 @@ func TestSessionsList_ParsesAPITokenSessions(t *testing.T) {
 		if r.URL.Path != "/api/admin/sessions/list" {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
-		fmt.Fprint(w, `{"status":"ok","response":{"sessions":[
+		_, _ = fmt.Fprint(w, `{"status":"ok","response":{"sessions":[
 			{"username":"admin","isCurrentSession":true,"partialToken":"aaaabbbbccccdddd","type":"Standard","tokenName":null,"lastSeen":"2026-08-16T00:00:00Z"},
 			{"username":"tf-dns","isCurrentSession":false,"partialToken":"1234567890abcdef","type":"ApiToken","tokenName":"terraform-automation","lastSeen":"2026-08-16T00:00:00Z"}
 		]}}`)
@@ -55,7 +55,7 @@ func TestSessionDelete_PassesPartialToken(t *testing.T) {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
 		gotPartial = r.URL.Query().Get("partialToken")
-		fmt.Fprint(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 
 	c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: "test-token"})

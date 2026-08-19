@@ -80,7 +80,7 @@ func newRecordReadHarness(t *testing.T, handler http.HandlerFunc) (*RecordResour
 // remove the record from state instead of aborting with a hard error.
 func TestRecordRead_MissingParentZoneRemovesState(t *testing.T) {
 	r, req, resp := newRecordReadHarness(t, func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"status":"error","errorMessage":"No such zone was found: pve.example.internal"}`)
+		_, _ = fmt.Fprint(w, `{"status":"error","errorMessage":"No such zone was found: pve.example.internal"}`)
 	})
 
 	r.Read(context.Background(), req, resp)
@@ -97,7 +97,7 @@ func TestRecordRead_MissingParentZoneRemovesState(t *testing.T) {
 // record in state.
 func TestRecordRead_TransientErrorKeepsState(t *testing.T) {
 	r, req, resp := newRecordReadHarness(t, func(w http.ResponseWriter, _ *http.Request) {
-		fmt.Fprint(w, `{"status":"invalid-token","errorMessage":"Invalid token or session expired."}`)
+		_, _ = fmt.Fprint(w, `{"status":"invalid-token","errorMessage":"Invalid token or session expired."}`)
 	})
 
 	r.Read(context.Background(), req, resp)

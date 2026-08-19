@@ -20,7 +20,7 @@ func TestZoneOptionsSet_QueryAccessAndDynamicUpdateParams(t *testing.T) {
 		if r.URL.Path == "/api/zones/options/set" {
 			got = r.URL.Query()
 		}
-		fmt.Fprint(w, `{"status":"ok"}`)
+		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 
 	c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: "test-token"})
@@ -56,7 +56,7 @@ func TestZoneOptionsSet_QueryAccessAndDynamicUpdateParams(t *testing.T) {
 // server reports.
 func TestZoneOptionsGet_ParsesAccessOptions(t *testing.T) {
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprint(w, `{"status":"ok","response":{
+		_, _ = fmt.Fprint(w, `{"status":"ok","response":{
 			"name":"example.internal",
 			"type":"Primary",
 			"queryAccess":"UseSpecifiedNetworkACL",
