@@ -256,10 +256,6 @@ provider "technitium" {
 resource "technitium_zone" "catalog" {
   name = %q
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_zone" "member" {
@@ -283,10 +279,6 @@ provider "technitium" {
 resource "technitium_zone" "catalog" {
   name = %q
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_zone" "member" {
@@ -315,19 +307,11 @@ provider "technitium" {
 resource "technitium_zone" "catalog_a" {
   name = %q
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_zone" "catalog_b" {
   name = %q
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_zone" "member" {
@@ -384,10 +368,6 @@ provider "technitium" {
 resource "technitium_zone" "catalog" {
   name = %q
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_catalog_membership" "test" {
