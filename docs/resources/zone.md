@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_zone Resource - Technitium DNS Server"
+page_title: "technitium_zone Resource - terraform-provider-technitium"
 description: |-
   Manages a DNS zone on the Technitium DNS Server. Supports Primary, Secondary, Stub,
   and Forwarder zone types with optional DNSSEC signing and TSIG-authenticated zone

@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_tsig_key Data Source - Technitium DNS Server"
+page_title: "technitium_tsig_key Data Source - terraform-provider-technitium"
 description: |-
   Reads a TSIG key from the Technitium DNS Server by name. Use this data
   source to reference an existing TSIG key in zone transfer configuration

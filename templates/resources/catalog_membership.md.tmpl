@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_catalog_membership Resource - terraform-provider-technitium"
+page_title: "{{.Name}} {{.Type}} - {{.RenderedProviderName}}"
 description: |-
   Manages catalog zone membership (RFC 9432) for a Technitium DNS zone, so that
   secondary name servers slaving the catalog zone automatically provision the
@@ -19,47 +19,7 @@ Valid for `Primary`, `Secondary`, `Stub`, and `Forwarder` member zones. The refe
 
 ## Example Usage
 
-```terraform
-# Manage catalog zone membership so that secondary name servers slaving the
-# catalog will automatically provision the member zone.
-#
-# The catalog zone (type = "Catalog") and the member zone (type = "Primary",
-# "Secondary", "Stub", or "Forwarder") must exist by the time
-# `terraform apply` reaches this resource. When all three resources are in
-# the same configuration (as below), Terraform's implicit dependency graph
-# orders the zone resources before the membership resource via the attribute
-# references on `zone` and `catalog_zone`.
-
-resource "technitium_zone" "cluster_catalog" {
-  name = "cluster-catalog.dns.example.internal"
-  type = "Catalog"
-}
-
-resource "technitium_zone" "lab" {
-  name = "lab.example.internal"
-  type = "Primary"
-
-  dnssec {
-    enabled = false
-  }
-}
-
-# IMPORTANT — catalog inheritance:
-#
-# Once a zone is added to a catalog, the catalog zone's queryAccess,
-# zoneTransfer, and notify settings take effect on the member zone unless
-# the corresponding override flags are set on the member. This provider
-# does not yet expose those override flags. Any matching settings declared
-# on technitium_zone.lab (zone_transfer_allowed_networks, query_access,
-# notify_addresses, etc.) may be silently shadowed by the catalog zone.
-#
-# See:
-# https://github.com/darkhonor/terraform-provider-technitium/issues/29
-resource "technitium_catalog_membership" "lab" {
-  zone         = technitium_zone.lab.name
-  catalog_zone = technitium_zone.cluster_catalog.name
-}
-```
+{{tffile "examples/resources/technitium_catalog_membership/resource.tf"}}
 
 ## Argument Reference
 
@@ -81,8 +41,4 @@ Destroying this resource unsets the member zone's catalog membership. It does **
 
 Catalog memberships are imported using the member zone name.
 
-```shell
-# Import an existing catalog membership by referencing the member zone name.
-# The membership is read back from the Technitium API.
-terraform import technitium_catalog_membership.lab lab.example.internal
-```
+{{codefile "shell" "examples/resources/technitium_catalog_membership/import.sh"}}

@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_blocked_zone Resource - Technitium DNS Server"
+page_title: "technitium_blocked_zone Resource - terraform-provider-technitium"
 description: |-
   Manages a single domain entry in the Technitium DNS Server blocked zone list.
 ---

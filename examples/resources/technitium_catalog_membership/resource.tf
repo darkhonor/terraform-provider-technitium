@@ -11,10 +11,6 @@
 resource "technitium_zone" "cluster_catalog" {
   name = "cluster-catalog.dns.example.internal"
   type = "Catalog"
-
-  dnssec {
-    enabled = false
-  }
 }
 
 resource "technitium_zone" "lab" {
