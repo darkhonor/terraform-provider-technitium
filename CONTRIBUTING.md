@@ -228,17 +228,36 @@ prescriptive):
 
 ## Attribution
 
-Contributors retain copyright in the work they author. If you add new source
-files, put your own copyright notice at the top of them:
+**Contributors retain copyright in the work they author.** This is the
+maintainer's position, not merely what the license permits.
+
+If you write a source file, put your own copyright notice on it:
 
 ```go
 // Copyright (c) <year> <your name>
 // SPDX-License-Identifier: MPL-2.0
 ```
 
-Both lines are required on every Go file and are enforced by a test. The
-copyright holder is yours to choose; the SPDX identifier must stay MPL-2.0 so
-the project remains uniformly licensed.
+Use whatever name you want associated with the work: a legal name, a handle,
+or an organization. The copyright holder is yours to choose. The SPDX
+identifier must stay MPL-2.0 so the project remains uniformly licensed while
+the copyright holder varies per file. Both lines are required on every Go file
+and are enforced by a test.
 
-Contributors are also listed in [AUTHORS](AUTHORS). If you have contributed and
-are not listed there, please open a pull request adding yourself.
+The maintainer does not want to be named as the copyright holder on files he
+did not write. If you contribute a file and it ends up carrying someone else's
+notice, that is a mistake worth correcting, not a formality to leave alone.
+Say so and it will be fixed.
+
+Contributors are also listed in [AUTHORS](AUTHORS) with a short description of
+what they contributed. If you have contributed and are not listed, please open
+a pull request adding yourself.
+
+For substantial contributions, the pull request is merged with a merge commit
+rather than a squash, so that individual commits remain in the project history
+under their author's name and email. The project default is squash-merge for
+routine changes; this is a deliberate exception.
+
+The intent behind all of it is straightforward: your contributions here should
+be work you can point to as your own, whether that is for a portfolio, a CV, or
+simply the satisfaction of having built something that other people run.
