@@ -64,6 +64,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Test infrastructure
 
+- `make docs` and `make generate` no longer delete `docs/` and fail when run from a directory
+  whose name is not `terraform-provider-technitium`, which includes every git worktree.
+  `tfplugindocs` infers the provider name from the working directory and clears the output
+  directory before validating it, so a failed run left the generated docs deleted. Both targets
+  now pass `--provider-name` explicitly. Output is byte-identical to before. (#114)
+
 - test: gate live-server setup behind TF_ACC so `go test ./...` passes on a clean clone ([#109])
 - test: direct client follows the suite's transport instead of hardcoding HTTP ([#111])
 
