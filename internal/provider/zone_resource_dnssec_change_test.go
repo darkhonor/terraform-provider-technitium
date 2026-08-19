@@ -37,6 +37,28 @@ resource "technitium_zone" "chg" {
 `, name, curve, ackLine)
 }
 
+func TestAccZoneResource_DNSSECInvalidPairRefusedAtCreate(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderHCL() + `
+resource "technitium_zone" "bad" {
+  name = "acc-96-badpair.example.com"
+  type = "Primary"
+  dnssec {
+    enabled   = true
+    algorithm = "EDDSA"
+    curve     = "P256"
+  }
+}
+`,
+				ExpectError: regexp.MustCompile("not a signable combination"),
+			},
+		},
+	})
+}
+
 func TestAccZoneResource_DNSSECChangeRefused(t *testing.T) {
 	zone := "acc-96-refused.example.com"
 	resource.Test(t, resource.TestCase{

@@ -201,6 +201,11 @@ transition a defined, plan-time outcome (issue #96):
   keep it with `enabled = false` and the acknowledgment for that apply, and remove the
   block afterwards — the acknowledgment lives inside the block, so a bare removal has
   nowhere to carry it.
+* A re-sign acknowledgment left in config after convergence also remains standing consent for
+  that declared transition: if the server later drifts (e.g. re-signed out-of-band with other
+  parameters), the next apply converges back destructively under the surviving token — with
+  the plan-time key-regeneration warning, but without a fresh consent prompt. Remove the
+  acknowledgment once the transition converges.
 * The `"unsigned"` acknowledgment is **standing consent** for that zone's unsign action —
   its target space has one member, so per-transition scoping is impossible there. Remove it
   after a deliberate unsign: while it sits in config with no unsign pending, every plan warns

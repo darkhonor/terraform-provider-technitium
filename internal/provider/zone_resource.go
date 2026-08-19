@@ -178,6 +178,9 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("NSEC3"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("NSEC", "NSEC3"),
+						},
 					},
 					"change_acknowledgment": schema.StringAttribute{
 						Description: "Operator acknowledgment authorizing a destructive DNSSEC transition on this zone. " +
@@ -232,6 +235,20 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 			"National Security Systems require ECDSA P384 (not P256) for DNSSEC signing. "+
 				"CNSSI 1253 mandates higher security margins for classified environments. "+
 				"Set dnssec { curve = \"P384\" } to comply.")
+	}
+
+	// Issue #96: algorithm/curve pair validity is config-static — refuse at
+	// plan time on CREATES too (the gate below only runs on updates), so an
+	// invalid pair can never create a zone whose signing then fails, leaving
+	// an orphaned server-side zone with no state.
+	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil &&
+		!plan.DNSSEC.Enabled.IsUnknown() && plan.DNSSEC.Enabled.ValueBool() &&
+		!plan.DNSSEC.Algorithm.IsUnknown() && !plan.DNSSEC.Curve.IsUnknown() &&
+		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
+		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
+			fmt.Sprintf("%s/%s is not a signable combination. Valid: ECDSA with P256 or P384; "+
+				"EDDSA with ED25519 or ED448; RSA (curve ignored).",
+				plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()))
 	}
 
 	// Issue #96: posture-scaled DNSSEC change gate — plan-time diagnostics
