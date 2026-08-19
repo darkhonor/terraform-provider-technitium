@@ -137,12 +137,21 @@ testacc-down-tls:
 	docker compose -f docker-compose.test.yml -f docker-compose.test.tls.yml down -v
 	rm -rf ./.testdata/dns-data ./testdata/tls
 
+# tfplugindocs infers --provider-name from the working directory name (minus
+# the terraform-provider- prefix). That inference fails in any directory named
+# otherwise — a git worktree, most commonly — and the generator clears docs/
+# before it validates the name, so a failed run leaves the docs deleted.
+# Passing the name explicitly is a no-op for the normal checkout and makes the
+# targets safe to run from anywhere.
+TFPLUGINDOCS = go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.24.0
+PROVIDER_NAME = terraform-provider-technitium
+
 generate:
 	go generate ./...
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.24.0 generate
+	$(TFPLUGINDOCS) generate --provider-name $(PROVIDER_NAME)
 
 docs:
-	go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs@v0.24.0 generate
+	$(TFPLUGINDOCS) generate --provider-name $(PROVIDER_NAME)
 
 lint:
 	golangci-lint run ./...

@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_allowed_zones Resource - Technitium DNS Server"
+page_title: "technitium_allowed_zones Resource - terraform-provider-technitium"
 description: |-
   Manages a set of domain entries in the Technitium DNS Server allowed zone list.
 ---

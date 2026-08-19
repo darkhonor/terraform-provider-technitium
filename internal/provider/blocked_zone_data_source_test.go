@@ -45,11 +45,7 @@ func TestAccBlockedZoneDataSource_notExists(t *testing.T) {
 }
 
 func testAccBlockedZoneDataSourceConfig_exists(domain string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_blocked_zone" "seed" {
   domain = %q
@@ -58,18 +54,14 @@ resource "technitium_blocked_zone" "seed" {
 data "technitium_blocked_zone" "check" {
   domain = technitium_blocked_zone.seed.domain
 }
-`, testAccAPIToken(), domain)
+`, domain)
 }
 
 func testAccBlockedZoneDataSourceConfig_notExists(domain string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 data "technitium_blocked_zone" "check" {
   domain = %q
 }
-`, testAccAPIToken(), domain)
+`, domain)
 }

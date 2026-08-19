@@ -1,0 +1,29 @@
+# Authors and Contributors
+
+This file lists the people who have contributed to
+terraform-provider-technitium. It is maintained by hand; if you have
+contributed and are not listed, that is an oversight rather than a judgment,
+and a pull request adding yourself is welcome.
+
+Contributors retain copyright in the work they author. Individual source files
+name their own copyright holder, and the project is licensed under MPL-2.0
+throughout. See LICENSE.
+
+## Maintainer
+
+* Alex Ackerman (@darkhonor)
+
+## Contributors
+
+Listed in order of first contribution.
+
+* batumilove (@batumilove) - forwarder (`FWD`) record support, made usable end
+  to end in v1.2.1. Added `dnssec_validation` to `FWD` record identity and
+  import IDs so two otherwise-identical forwarders can be told apart in
+  Terraform state, with backward-compatible parsing of the legacy three-field
+  form; fixed the import parser writing a CAA tag into the `protocol`
+  attribute, a partial update silently disabling DNSSEC validation, and a
+  permanent diff on records that omit the attribute. (#69)
+
+* Aleman <aleman@ackermans.lt> - co-author on the forwarder record work above.
+  (#69)

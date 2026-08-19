@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_record Resource - Technitium DNS Server"
+page_title: "technitium_record Resource - terraform-provider-technitium"
 description: |-
   Manages a DNS record in a Technitium DNS zone. Supports A, AAAA, CNAME, MX, TXT, SRV,
   PTR, NS, CAA, and FWD record types. Client-side validation ensures type/value compatibility

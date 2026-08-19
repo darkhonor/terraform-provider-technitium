@@ -373,9 +373,15 @@ data "technitium_zone" "test" {
 
 // testAccDirectClient creates a direct API client for test setup operations
 // that need to bypass Terraform resource lifecycle.
+//
+// Setup that runs before resource.Test is not covered by the TF_ACC check
+// resource.Test performs, so the gate is applied here: every caller opens a
+// connection to a live server, and none of them may run in a plain
+// `go test ./...` on a machine with no Technitium instance.
 func testAccDirectClient(t *testing.T) *client.Client {
 	t.Helper()
-	c, err := client.NewClient(client.ClientConfig{BaseURL: "http://127.0.0.1:5380", Token: testAccAPIToken()})
+	skipUnlessAcceptance(t)
+	c, err := client.NewClient(acceptanceClientConfig())
 	if err != nil {
 		t.Fatalf("failed to create direct API client: %s", err)
 	}
@@ -593,13 +599,16 @@ func TestAccZoneResource_NSS_TsigKeyNonCompliant_sha512_256(t *testing.T) {
 	})
 }
 
+// testAccAPIToken returns the API token acceptance tests authenticate with.
+// The token is provisioned when the Docker test instance starts and exported
+// by the testacc make targets; set it via .env.test or TECHNITIUM_API_TOKEN.
+//
+// There is deliberately no fallback value. An unset token yields an empty
+// string, which the provider reports as its own "Missing api_token"
+// diagnostic naming the environment variable. Substituting a baked-in
+// credential instead produces a confusing invalid-token failure against
+// whatever server happens to be listening, and puts a credential-shaped
+// literal in the repository (#108).
 func testAccAPIToken() string {
-	// Read from environment — token is provisioned when the Docker test instance starts.
-	// Set via .env.test or TECHNITIUM_API_TOKEN env var.
-	token := os.Getenv("TECHNITIUM_API_TOKEN")
-	if token == "" {
-		// Fallback for CI or manual runs
-		token = "7b34e85a6f9bdf8dacf8513024463408c51980663e47c1cd522f2f9071686388"
-	}
-	return token
+	return os.Getenv("TECHNITIUM_API_TOKEN")
 }

@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_allowed_zones Data Source - Technitium DNS Server"
+page_title: "technitium_allowed_zones Data Source - terraform-provider-technitium"
 description: |-
   Retrieves the full set of domains in the Technitium DNS Server allowed zone
   list. Use this data source to enumerate or count all allowed domains.

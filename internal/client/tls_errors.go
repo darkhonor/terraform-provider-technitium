@@ -1,3 +1,6 @@
+// Copyright (c) 2026 Alex Ackerman
+// SPDX-License-Identifier: MPL-2.0
+
 package client
 
 import (

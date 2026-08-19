@@ -90,14 +90,10 @@ func TestAccAllowedZoneResource_domainChangeForceNew(t *testing.T) {
 }
 
 func testAccAllowedZoneResourceConfig(domain string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_allowed_zone" "test" {
   domain = %q
 }
-`, testAccAPIToken(), domain)
+`, domain)
 }

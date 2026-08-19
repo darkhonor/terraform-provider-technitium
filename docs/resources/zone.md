@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_zone Resource - Technitium DNS Server"
+page_title: "technitium_zone Resource - terraform-provider-technitium"
 description: |-
   Manages a DNS zone on the Technitium DNS Server. Supports Primary, Secondary, Stub,
   and Forwarder zone types with optional DNSSEC signing and TSIG-authenticated zone
@@ -84,6 +84,138 @@ resource "technitium_zone" "nss" {
 }
 ```
 
+### DNSSEC: EdDSA (Ed448)
+
+Ed448 produces the smallest `DNSKEY` and `RRSIG` records of any algorithm DNSSEC currently specifies. Response size drives truncation and TCP fallback, which is why NIST SP 800-81r3 recommends ECDSA and Ed448 over RSA.
+
+`BIND-9X-002050` requires a DNSSEC algorithm number of 8 (RSA/SHA-256) or higher; Ed448 is algorithm 16 and clears that floor.
+
+~> **This provider's `DNS-REQ-012` validator currently accepts only `ECDSA`**, so under `strict` enforcement this configuration draws a finding even though the STIG permits it. The validator is narrower than its own cited source; tracked in [#98](https://github.com/darkhonor/terraform-provider-technitium/issues/98). Until that is resolved, run the zone under `warn` enforcement or suppress `DNS-REQ-012` explicitly.
+
+```hcl
+resource "technitium_zone" "eddsa" {
+  name = "ed.example.com"
+  type = "Primary"
+
+  dnssec {
+    enabled   = true
+    algorithm = "EDDSA"
+    curve     = "ED448"
+    nx_proof  = "NSEC3"
+  }
+}
+```
+
+### DNSSEC: RSA for Legacy Validator Interoperability
+
+RSA/SHA-256 is DNSSEC algorithm 8 — the exact floor `BIND-9X-002050` sets ("if the KSK DNSKEY is less than 8 (SHA256), this is a finding"). The Windows Server DNS STIG goes further and calls RSA "the recommended algorithm for this guideline". Every deployed validator understands it.
+
+Against that, RSA keys and signatures are far larger than their elliptic-curve equivalents, inflating responses and pushing queries to TCP. Reach for RSA when you have a specific interoperability requirement, not by default.
+
+~> **Same `DNS-REQ-012` caveat as Ed448 above** — this draws a finding under `strict` enforcement even though both DNS STIGs permit RSA and one recommends it. See [#98](https://github.com/darkhonor/terraform-provider-technitium/issues/98).
+
+```hcl
+resource "technitium_zone" "rsa" {
+  name = "legacy.example.com"
+  type = "Primary"
+
+  dnssec {
+    enabled   = true
+    algorithm = "RSA"
+    nx_proof  = "NSEC3"
+    # curve does not apply to RSA and is omitted.
+  }
+}
+```
+
+### DNSSEC: Changing NSEC / NSEC3 (non-destructive)
+
+This is the **only** DNSSEC parameter change that is not destructive. The zone converts in place: keys are kept, no re-signing ceremony is needed, the parent `DS` record is unaffected, and no `change_acknowledgment` is required. Edit `nx_proof` and apply — that is the whole procedure.
+
+-> **Which to use:** NSEC3 prevents zone walking, where an attacker enumerates every name by following the NSEC chain. The Windows Server DNS STIG requires NSEC3 for all internal zones, and NIST SP 800-81r3 describes zone enumeration as "most likely a prelude to an attack". Use NSEC only when the zone contents are genuinely public and you have a reason.
+
+```hcl
+resource "technitium_zone" "nxproof" {
+  name = "walkable.example.com"
+  type = "Primary"
+
+  dnssec {
+    enabled   = true
+    algorithm = "ECDSA"
+    curve     = "P256"
+
+    # Changed from "NSEC". Converts in place; keys and DS records survive.
+    nx_proof = "NSEC3"
+  }
+}
+```
+
+### DNSSEC: Rotating Algorithm or Curve (destructive)
+
+~> **This destroys and regenerates every key.** Technitium cannot re-key a signed zone in place, so the provider unsigns and re-signs it. The zone is briefly unsigned during the apply, and the `DS` record published in the parent stops matching the moment the new keys exist — resolvers holding the old `DS` will fail validation until you publish the new one.
+
+The change is refused at plan time unless the zone declares an acknowledgment naming exactly the parameters you are moving to. The token is compared literally, so it must match the provider's spelling: `ECDSA/P384`, `EDDSA/ED448`, or bare `RSA` (RSA has no curve).
+
+**Procedure**
+
+1. Set the new `algorithm`/`curve` **and** the matching `change_acknowledgment`. Apply.
+2. Export the new `DS` records and publish them in the parent zone, replacing the old ones (`WDNS-22-000055` / `WDNS-22-000056`).
+3. Redistribute trust anchors to any resolver configured with an explicit anchor for this zone.
+4. **Remove the `change_acknowledgment`.**
+
+~> **Step 4 is not optional.** A token left in place remains standing consent for that same transition: if the zone is later re-signed out of band with different parameters, the next apply silently converges back destructively under the surviving token. Every plan warns while it sits there unused.
+
+The older workaround — set `enabled = false`, apply, then re-enable with new parameters — still works. Under `strict` enforcement its first step needs `change_acknowledgment = "unsigned"`.
+
+```hcl
+resource "technitium_zone" "rotating" {
+  name = "rotate.example.com"
+  type = "Primary"
+
+  dnssec {
+    enabled   = true
+    algorithm = "ECDSA"
+
+    # Changed from "P256". Requires the acknowledgment below.
+    curve    = "P384"
+    nx_proof = "NSEC3"
+
+    # Authorizes this transition only. Remove once the DS records are republished.
+    change_acknowledgment = "ECDSA/P384"
+  }
+}
+```
+
+### DNSSEC: Taking a Zone Insecure (destructive)
+
+~> **Order matters more than the configuration here.** Unsigning destroys the zone's keys. If the parent still publishes a `DS` record when the signatures disappear, validating resolvers treat the zone as **bogus** and refuse to resolve it — a self-inflicted outage lasting until the `DS` expires from caches. RFC 6781 §4.2.1.2 covers the going-insecure procedure; the provider warns at plan time in every enforcement mode.
+
+**Correct order**
+
+1. Remove the `DS` record for this zone from the **parent** zone.
+2. Wait out the parent `DS` record's TTL, so no resolver still has it cached.
+3. Withdraw any trust anchors distributed for this zone.
+4. Only then apply the configuration below.
+
+~> **Keep the `dnssec` block; do not delete it.** The acknowledgment lives *inside* the block, so deleting it outright leaves nowhere to carry consent and `strict` enforcement refuses the plan. Set `enabled = false` with the acknowledgment for the unsigning apply, then remove the block on a later apply once the zone is already unsigned.
+
+`"unsigned"` is standing consent rather than a one-shot token — its target space has a single member, so it cannot be scoped per-transition the way an algorithm token is. While it sits in configuration with no unsign pending, every plan warns that it will authorize a future unsign. Remove it once the unsign has converged. That removal warning is the one notice `silent` enforcement suppresses.
+
+```hcl
+resource "technitium_zone" "going_insecure" {
+  name = "retiring.example.com"
+  type = "Primary"
+
+  dnssec {
+    # Keep the block and set enabled = false. Do not delete the block: the
+    # acknowledgment below lives inside it.
+    enabled = false
+
+    change_acknowledgment = "unsigned"
+  }
+}
+```
+
 ## Argument Reference
 
 * `name` - (Required, String) Domain name for the zone. (Forces replacement.)
@@ -100,9 +232,11 @@ resource "technitium_zone" "nss" {
 
 * `primary_zone_transfer_tsig_key_name` - (Optional, String) TSIG key name for authenticating zone transfers from the primary server. Only valid for `Secondary`, `SecondaryForwarder`, and `SecondaryCatalog` zones.
 
-* `dnssec` - (Optional, Block) DNSSEC signing configuration. See [dnssec](#dnssec) below.
+* `dnssec` - (Optional, Block) DNSSEC signing configuration. Only valid for `Primary` zones. See [dnssec](#dnssec) below.
 
 ### dnssec
+
+~> **`Primary` zones only.** Technitium signs `Primary` zones and refuses every other type, so a `dnssec` block on a `Secondary`, `Stub`, `Forwarder`, `Catalog`, `SecondaryForwarder`, or `SecondaryCatalog` zone is rejected at plan time. A `Secondary` serves the signed data it receives from its primary by zone transfer rather than signing locally, so sign the zone on the primary instead.
 
 The `dnssec` block supports the following arguments:
 

@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_blocked_zones Data Source - Technitium DNS Server"
+page_title: "technitium_blocked_zones Data Source - terraform-provider-technitium"
 description: |-
   Retrieves the full set of domains in the Technitium DNS Server blocked zone
   list. Use this data source to enumerate or count all blocked domains.

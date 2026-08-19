@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_server_settings Data Source - Technitium DNS Server"
+page_title: "technitium_server_settings Data Source - terraform-provider-technitium"
 description: |-
   Reads the current Technitium DNS Server configuration. Use this data source
   for compliance auditing or to reference server settings in other resources.

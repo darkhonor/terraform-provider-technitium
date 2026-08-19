@@ -1,6 +1,6 @@
 ---
 subcategory: ""
-page_title: "technitium_tsig_key Resource - Technitium DNS Server"
+page_title: "technitium_tsig_key Resource - terraform-provider-technitium"
 description: |-
   Manages TSIG keys for authenticated DNS server-to-server transactions
   (zone transfers, dynamic updates).
