@@ -381,7 +381,7 @@ data "technitium_zone" "test" {
 func testAccDirectClient(t *testing.T) *client.Client {
 	t.Helper()
 	skipUnlessAcceptance(t)
-	c, err := client.NewClient(client.ClientConfig{BaseURL: defaultAcceptanceHost, Token: testAccAPIToken()})
+	c, err := client.NewClient(acceptanceClientConfig())
 	if err != nil {
 		t.Fatalf("failed to create direct API client: %s", err)
 	}
