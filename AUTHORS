@@ -1,0 +1,24 @@
+# Authors and Contributors
+
+This file lists the people who have contributed to
+terraform-provider-technitium. It is maintained by hand; if you have
+contributed and are not listed, that is an oversight rather than a judgment,
+and a pull request adding yourself is welcome.
+
+Contributors retain copyright in the work they author. Individual source files
+name their own copyright holder, and the project is licensed under MPL-2.0
+throughout. See LICENSE.
+
+## Maintainer
+
+* Alex Ackerman (@darkhonor)
+
+## Contributors
+
+* Ujstor (@Ujstor) - cluster bootstrap and join (`technitium_cluster`,
+  `technitium_cluster_secondary`), single sign-on (`technitium_sso`), local
+  user and API token management (`technitium_user`, `technitium_api_token`),
+  zone query-access and RFC 2136 dynamic-update ACLs, web service TLS
+  settings, and the record refresh fix for a missing parent zone (#88).
+  Field-tested against a three-node cluster and a roughly 200-resource
+  adoption.

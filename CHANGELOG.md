@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   produced inconsistent result after apply". A Secondary serves the signed data it receives
   from its primary, so sign the zone on the primary instead. (#100)
 
+### Added
+
+- `AUTHORS` file listing contributors, and an Attribution section in
+  `CONTRIBUTING.md` stating that contributors retain copyright in the work they author
+  and should put their own notice on new source files. (#115)
+
 ### Security
 
 - The acceptance-test suite no longer carries a hardcoded API token literal. The helper that

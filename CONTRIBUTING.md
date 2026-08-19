@@ -225,3 +225,20 @@ prescriptive):
 - `Co-Authored-By: GitHub Copilot <noreply@github.com>`
 - `Co-Authored-By: Cursor <noreply@cursor.sh>`
 - `Co-Authored-By: Claude Code <noreply@anthropic.com>`
+
+## Attribution
+
+Contributors retain copyright in the work they author. If you add new source
+files, put your own copyright notice at the top of them:
+
+```go
+// Copyright (c) <year> <your name>
+// SPDX-License-Identifier: MPL-2.0
+```
+
+Both lines are required on every Go file and are enforced by a test. The
+copyright holder is yours to choose; the SPDX identifier must stay MPL-2.0 so
+the project remains uniformly licensed.
+
+Contributors are also listed in [AUTHORS](AUTHORS). If you have contributed and
+are not listed there, please open a pull request adding yourself.
