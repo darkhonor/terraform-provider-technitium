@@ -235,6 +235,15 @@ func (r *ClusterSecondaryResource) Create(ctx context.Context, req resource.Crea
 		if err == nil || !isConnectionRefused(err) || time.Now().After(deadline) {
 			break
 		}
+		// A dropped connection does not say whether the join landed: initJoin
+		// triggers a config sync and web service restart on the secondary, so
+		// the response can be lost after the node has already joined. Retrying
+		// blind would fail with "already part of a cluster" and lose a joined
+		// node to no state entry at all, so ask the node what happened.
+		if joined, stateErr := nodeClient.ClusterState(ctx); stateErr == nil && joined.ClusterInitialized {
+			info, err = joined, nil
+			break
+		}
 		select {
 		case <-ctx.Done():
 			resp.Diagnostics.AddError("Error joining cluster", ctx.Err().Error())

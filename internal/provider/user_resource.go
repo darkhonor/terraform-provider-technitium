@@ -120,25 +120,42 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	username := plan.Username.ValueString()
+
+	// Build the follow-up parameters from the plan before the account is
+	// refreshed below: readState overwrites the configured values with the
+	// server's, which would send the server's own values back to it.
+	params := r.buildSetParams(ctx, &plan)
+
 	if err := r.client.UserCreate(ctx, username, plan.Password.ValueString(), plan.DisplayName.ValueString()); err != nil {
 		resp.Diagnostics.AddError("Error creating user", err.Error())
 		return
 	}
 
-	params := r.buildSetParams(ctx, &plan)
-	if len(params) > 0 {
-		if err := r.client.UserSet(ctx, username, params); err != nil {
-			resp.Diagnostics.AddError("Error configuring user", err.Error())
-			return
-		}
-	}
-
+	// The account exists on the server from here on. Persist state before any
+	// further call so a later failure surfaces on a resource Terraform tracks,
+	// rather than orphaning a live account that the next apply cannot recreate
+	// ("user already exists") and cannot destroy.
 	plan.ID = types.StringValue(username)
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading user", err.Error())
 		return
 	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if len(params) > 0 {
+		if err := r.client.UserSet(ctx, username, params); err != nil {
+			resp.Diagnostics.AddError("Error configuring user", err.Error())
+			return
+		}
+		if err := r.readState(ctx, &plan); err != nil {
+			resp.Diagnostics.AddError("Error reading user", err.Error())
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	}
 }
 
 func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
