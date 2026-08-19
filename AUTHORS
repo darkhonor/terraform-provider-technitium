@@ -27,11 +27,3 @@ Listed in order of first contribution.
 
 * Aleman <aleman@ackermans.lt> - co-author on the forwarder record work above.
   (#69)
-
-* Ujstor (@Ujstor) - cluster bootstrap and join (`technitium_cluster`,
-  `technitium_cluster_secondary`), single sign-on (`technitium_sso`), local
-  user and API token management (`technitium_user`, `technitium_api_token`),
-  zone query-access and RFC 2136 dynamic-update ACLs, web service TLS
-  settings, and the record refresh fix for a missing parent zone (#88).
-  Field-tested against a three-node cluster and a roughly 200-resource
-  adoption.
