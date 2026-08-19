@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- New resources: `technitium_cluster` (Primary initialization),
+- Contributed by [@Ujstor](https://github.com/Ujstor). New resources: `technitium_cluster` (Primary initialization),
   `technitium_cluster_secondary` (Secondary join, with `terraform import`
   support and in-place adoption semantics for `node_url` /
   `primary_node_url`), `technitium_sso` (OIDC SSO incl. group mapping),

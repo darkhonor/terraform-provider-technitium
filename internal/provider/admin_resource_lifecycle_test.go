@@ -67,13 +67,13 @@ func TestAPITokenCreate_StoresServerReportedPartialToken(t *testing.T) {
 	mux.HandleFunc("/api/admin/sessions/createToken", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, `{"status":"ok","response":{
 			"username":"automation","tokenName":"terraform",
-			"token":"0123456789abcdeffedcba9876543210"
+			"token":"EXAMPLE-TOKEN-01-EXAMPLE-TOKEN-02"
 		}}`)
 	})
 	mux.HandleFunc("/api/admin/sessions/list", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, `{"status":"ok","response":{"sessions":[
 			{"username":"admin","type":"Standard","partialToken":"aaaaaaaaaaaaaaaa","isCurrentSession":true},
-			{"username":"automation","type":"ApiToken","tokenName":"terraform","partialToken":"0123456789abcdef"}
+			{"username":"automation","type":"ApiToken","tokenName":"terraform","partialToken":"EXAMPLE-TOKEN-01"}
 		]}}`)
 	})
 
@@ -88,13 +88,13 @@ func TestAPITokenCreate_StoresServerReportedPartialToken(t *testing.T) {
 	if diags := resp.State.Get(context.Background(), &saved); diags.HasError() {
 		t.Fatalf("state.Get: %v", diags)
 	}
-	if got, want := saved.PartialToken.ValueString(), "0123456789abcdef"; got != want {
+	if got, want := saved.PartialToken.ValueString(), "EXAMPLE-TOKEN-01"; got != want {
 		t.Errorf("partial_token = %q, want the server-reported %q", got, want)
 	}
 	if got, want := saved.ID.ValueString(), "automation/terraform"; got != want {
 		t.Errorf("id = %q, want %q", got, want)
 	}
-	if got, want := saved.Token.ValueString(), "0123456789abcdeffedcba9876543210"; got != want {
+	if got, want := saved.Token.ValueString(), "EXAMPLE-TOKEN-01-EXAMPLE-TOKEN-02"; got != want {
 		t.Errorf("token = %q, want %q", got, want)
 	}
 }
@@ -108,7 +108,7 @@ func TestAPITokenCreate_FallsBackToTokenPrefixWhenSessionUnlisted(t *testing.T) 
 	mux.HandleFunc("/api/admin/sessions/createToken", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = fmt.Fprint(w, `{"status":"ok","response":{
 			"username":"automation","tokenName":"terraform",
-			"token":"0123456789abcdeffedcba9876543210"
+			"token":"EXAMPLE-TOKEN-01-EXAMPLE-TOKEN-02"
 		}}`)
 	})
 	mux.HandleFunc("/api/admin/sessions/list", func(w http.ResponseWriter, _ *http.Request) {
@@ -126,7 +126,7 @@ func TestAPITokenCreate_FallsBackToTokenPrefixWhenSessionUnlisted(t *testing.T) 
 	if diags := resp.State.Get(context.Background(), &saved); diags.HasError() {
 		t.Fatalf("state.Get: %v", diags)
 	}
-	if got, want := saved.PartialToken.ValueString(), "0123456789abcdef"; got != want {
+	if got, want := saved.PartialToken.ValueString(), "EXAMPLE-TOKEN-01"; got != want {
 		t.Errorf("partial_token = %q, want the 16-character prefix %q", got, want)
 	}
 }
@@ -147,8 +147,8 @@ func TestAPITokenRead_RemovesStateWhenTokenRevokedServerSide(t *testing.T) {
 		ID:           types.StringValue("automation/terraform"),
 		User:         types.StringValue("automation"),
 		TokenName:    types.StringValue("terraform"),
-		Token:        types.StringValue("0123456789abcdeffedcba9876543210"),
-		PartialToken: types.StringValue("0123456789abcdef"),
+		Token:        types.StringValue("EXAMPLE-TOKEN-01-EXAMPLE-TOKEN-02"),
+		PartialToken: types.StringValue("EXAMPLE-TOKEN-01"),
 	}); diags.HasError() {
 		t.Fatalf("state.Set: %v", diags)
 	}
@@ -186,8 +186,8 @@ func TestAPITokenDelete_SendsStoredPartialToken(t *testing.T) {
 		ID:           types.StringValue("automation/terraform"),
 		User:         types.StringValue("automation"),
 		TokenName:    types.StringValue("terraform"),
-		Token:        types.StringValue("0123456789abcdeffedcba9876543210"),
-		PartialToken: types.StringValue("0123456789abcdef"),
+		Token:        types.StringValue("EXAMPLE-TOKEN-01-EXAMPLE-TOKEN-02"),
+		PartialToken: types.StringValue("EXAMPLE-TOKEN-01"),
 	}); diags.HasError() {
 		t.Fatalf("state.Set: %v", diags)
 	}
@@ -203,7 +203,7 @@ func TestAPITokenDelete_SendsStoredPartialToken(t *testing.T) {
 	if !seen {
 		t.Fatal("Delete never called /api/admin/sessions/delete")
 	}
-	if want := "0123456789abcdef"; gotPartial != want {
+	if want := "EXAMPLE-TOKEN-01"; gotPartial != want {
 		t.Errorf("partialToken sent = %q, want the value stored in state %q", gotPartial, want)
 	}
 }
