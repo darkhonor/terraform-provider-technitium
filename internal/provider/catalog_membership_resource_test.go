@@ -247,11 +247,7 @@ func checkZoneExistsFn(t *testing.T, zone string) resource.TestCheckFunc {
 }
 
 func testAccCatalogMembershipZonesOnly(memberZone, catalogZone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "catalog" {
   name = %q
@@ -266,15 +262,11 @@ resource "technitium_zone" "member" {
     enabled = false
   }
 }
-`, testAccAPIToken(), catalogZone, memberZone)
+`, catalogZone, memberZone)
 }
 
 func testAccCatalogMembershipBasic(memberZone, catalogZone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "catalog" {
   name = %q
@@ -294,15 +286,11 @@ resource "technitium_catalog_membership" "test" {
   zone         = technitium_zone.member.name
   catalog_zone = technitium_zone.catalog.name
 }
-`, testAccAPIToken(), catalogZone, memberZone)
+`, catalogZone, memberZone)
 }
 
 func testAccCatalogMembershipTwoCatalogs(memberZone, catalogA, catalogB, active string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "catalog_a" {
   name = %q
@@ -332,15 +320,11 @@ resource "technitium_catalog_membership" "test" {
     technitium_zone.catalog_b,
   ]
 }
-`, testAccAPIToken(), catalogA, catalogB, memberZone, active)
+`, catalogA, catalogB, memberZone, active)
 }
 
 func testAccCatalogMembershipMissingCatalog(memberZone, missingCatalog string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "member" {
   name = %q
@@ -355,15 +339,11 @@ resource "technitium_catalog_membership" "test" {
   zone         = technitium_zone.member.name
   catalog_zone = %q
 }
-`, testAccAPIToken(), memberZone, missingCatalog)
+`, memberZone, missingCatalog)
 }
 
 func testAccCatalogMembershipMissingMember(missingMember, catalogZone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "catalog" {
   name = %q
@@ -374,15 +354,11 @@ resource "technitium_catalog_membership" "test" {
   zone         = %q
   catalog_zone = technitium_zone.catalog.name
 }
-`, testAccAPIToken(), catalogZone, missingMember)
+`, catalogZone, missingMember)
 }
 
 func testAccCatalogMembershipWrongType(memberZone, wrongCatalog string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_zone" "wrong" {
   name = %q
@@ -406,19 +382,15 @@ resource "technitium_catalog_membership" "test" {
   zone         = technitium_zone.member.name
   catalog_zone = technitium_zone.wrong.name
 }
-`, testAccAPIToken(), wrongCatalog, memberZone)
+`, wrongCatalog, memberZone)
 }
 
 func testAccCatalogMembershipSelfReference(zone string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_catalog_membership" "self" {
   zone         = %q
   catalog_zone = %q
 }
-`, testAccAPIToken(), zone, zone)
+`, zone, zone)
 }

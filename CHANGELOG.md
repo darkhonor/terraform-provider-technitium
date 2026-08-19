@@ -89,6 +89,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Test infrastructure
 
+- Acceptance-test configurations no longer hand-roll a `provider "technitium"` block pinned to
+  `http://127.0.0.1:5380`. Thirty-seven blocks across ten files now use the environment-aware
+  `testAccProviderHCL()` helper, so they follow `TECHNITIUM_SERVER_URL` and `TECHNITIUM_CACERT`
+  during the TLS acceptance run instead of talking plaintext on 5380 while the rest of the
+  suite used HTTPS on 5443. Completes the transport fix begun in #110, which corrected only the
+  Go direct client. A regression test scans the package so a hardcoded endpoint cannot be
+  reintroduced. (#115)
+
 - `make docs` and `make generate` no longer delete `docs/` and fail when run from a directory
   whose name is not `terraform-provider-technitium`, which includes every git worktree.
   `tfplugindocs` infers the provider name from the working directory and clears the output

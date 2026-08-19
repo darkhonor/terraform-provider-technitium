@@ -47,11 +47,7 @@ func TestAccAllowedZoneDataSource_notExists(t *testing.T) {
 // testAccAllowedZoneDataSourceConfig creates an allowed_zone resource and then
 // reads it back via the data source — expects exists=true.
 func testAccAllowedZoneDataSourceConfig(domain string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_allowed_zone" "setup" {
   domain = %q
@@ -61,20 +57,16 @@ data "technitium_allowed_zone" "check" {
   domain     = %q
   depends_on = [technitium_allowed_zone.setup]
 }
-`, testAccAPIToken(), domain, domain)
+`, domain, domain)
 }
 
 // testAccAllowedZoneDataSourceOnlyConfig reads a domain that does not exist —
 // expects exists=false.
 func testAccAllowedZoneDataSourceOnlyConfig(domain string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 data "technitium_allowed_zone" "check" {
   domain = %q
 }
-`, testAccAPIToken(), domain)
+`, domain)
 }

@@ -29,11 +29,7 @@ func TestAccAllowedZonesDataSource_list(t *testing.T) {
 }
 
 func testAccAllowedZonesDataSourceConfig(domain1, domain2 string) string {
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_allowed_zone" "setup1" {
   domain = %q
@@ -49,5 +45,5 @@ data "technitium_allowed_zones" "all" {
     technitium_allowed_zone.setup2,
   ]
 }
-`, testAccAPIToken(), domain1, domain2)
+`, domain1, domain2)
 }

@@ -120,14 +120,10 @@ func testAccBlockedZonesResourceConfig(domains []string) string {
 	for i, d := range domains {
 		quoted[i] = fmt.Sprintf("%q", d)
 	}
-	return fmt.Sprintf(`
-provider "technitium" {
-  server_url = "http://127.0.0.1:5380"
-  api_token  = "%s"
-}
+	return testAccProviderHCL() + fmt.Sprintf(`
 
 resource "technitium_blocked_zones" "corporate" {
   domains = [%s]
 }
-`, testAccAPIToken(), strings.Join(quoted, ", "))
+`, strings.Join(quoted, ", "))
 }
