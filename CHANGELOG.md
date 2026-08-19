@@ -50,7 +50,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- `AUTHORS` file listing contributors, and an Attribution section in
+- `AUTHORS` file crediting contributors whose work was already merged but never named
+  anywhere in the repository, and an Attribution section in
   `CONTRIBUTING.md` stating that contributors retain copyright in the work they author
   and should put their own notice on new source files. (#115)
 
