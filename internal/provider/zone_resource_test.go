@@ -373,9 +373,15 @@ data "technitium_zone" "test" {
 
 // testAccDirectClient creates a direct API client for test setup operations
 // that need to bypass Terraform resource lifecycle.
+//
+// Setup that runs before resource.Test is not covered by the TF_ACC check
+// resource.Test performs, so the gate is applied here: every caller opens a
+// connection to a live server, and none of them may run in a plain
+// `go test ./...` on a machine with no Technitium instance.
 func testAccDirectClient(t *testing.T) *client.Client {
 	t.Helper()
-	c, err := client.NewClient(client.ClientConfig{BaseURL: "http://127.0.0.1:5380", Token: testAccAPIToken()})
+	skipUnlessAcceptance(t)
+	c, err := client.NewClient(client.ClientConfig{BaseURL: defaultAcceptanceHost, Token: testAccAPIToken()})
 	if err != nil {
 		t.Fatalf("failed to create direct API client: %s", err)
 	}
