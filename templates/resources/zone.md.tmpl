@@ -31,6 +31,26 @@ Manages a DNS zone on the Technitium DNS Server. Supports Primary, Secondary, St
 
 {{codefile "hcl" "examples/resources/technitium_zone/nss-compliant.tf"}}
 
+### DNSSEC: EdDSA (Ed448)
+
+{{codefile "hcl" "examples/resources/technitium_zone/dnssec-eddsa.tf"}}
+
+### DNSSEC: RSA for Legacy Validator Interoperability
+
+{{codefile "hcl" "examples/resources/technitium_zone/dnssec-rsa.tf"}}
+
+### DNSSEC: Changing NSEC / NSEC3 (non-destructive)
+
+{{codefile "hcl" "examples/resources/technitium_zone/dnssec-nxproof-change.tf"}}
+
+### DNSSEC: Rotating Algorithm or Curve (destructive)
+
+{{codefile "hcl" "examples/resources/technitium_zone/dnssec-algorithm-rotation.tf"}}
+
+### DNSSEC: Taking a Zone Insecure (destructive)
+
+{{codefile "hcl" "examples/resources/technitium_zone/dnssec-unsign.tf"}}
+
 ## Argument Reference
 
 * `name` - (Required, String) Domain name for the zone. (Forces replacement.)
