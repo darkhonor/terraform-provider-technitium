@@ -6,14 +6,20 @@ package provider
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
 
-const (
-	copyrightLine = "// Copyright (c) 2026 Alex Ackerman"
-	spdxLine      = "// SPDX-License-Identifier: MPL-2.0"
-)
+const spdxLine = "// SPDX-License-Identifier: MPL-2.0"
+
+// copyrightNotice matches any copyright holder, deliberately. Contributors own
+// the copyright in the files they author, and MPL-2.0 lets those files carry
+// their own notice. Pinning this to one name would turn the check into a
+// mechanism for stripping contributor attribution, which is the opposite of
+// what it is for. What matters is that every file names someone and declares
+// its license.
+var copyrightNotice = regexp.MustCompile(`(?m)^// Copyright \(c\) \d{4}(-\d{4})? \S`)
 
 // Every Go file carries a copyright notice and an SPDX identifier. MPL-2.0
 // section 3.4 requires those notices to survive redistribution, and this
@@ -57,8 +63,9 @@ func TestEveryGoFileCarriesLicenseHeader(t *testing.T) {
 		if len(head) > 200 {
 			head = head[:200]
 		}
-		if !strings.Contains(head, copyrightLine) {
-			t.Errorf("%s is missing the copyright notice %q", rel, copyrightLine)
+		if !copyrightNotice.MatchString(head) {
+			t.Errorf("%s is missing a copyright notice (expected a line like "+
+				"\"// Copyright (c) <year> <holder>\")", rel)
 		}
 		if !strings.Contains(head, spdxLine) {
 			t.Errorf("%s is missing the SPDX identifier %q", rel, spdxLine)
