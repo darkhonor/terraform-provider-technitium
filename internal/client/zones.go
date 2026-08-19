@@ -233,6 +233,34 @@ func (c *Client) ZoneDNSSECUnsign(ctx context.Context, name string) error {
 	return nil
 }
 
+// ZoneDNSSECConvertNxProof converts a signed zone's proof of non-existence
+// in place — no key regeneration (issue #96). Valid nxProof values: "NSEC",
+// "NSEC3". Any other value errors without calling the server.
+func (c *Client) ZoneDNSSECConvertNxProof(ctx context.Context, name, nxProof string) error {
+	var endpoint string
+	switch nxProof {
+	case "NSEC":
+		endpoint = "/api/zones/dnssec/properties/convertToNSEC"
+	case "NSEC3":
+		endpoint = "/api/zones/dnssec/properties/convertToNSEC3"
+	default:
+		return fmt.Errorf("invalid nxProof %q: must be NSEC or NSEC3", nxProof)
+	}
+	params := url.Values{
+		"zone": {name},
+	}
+	if nxProof == "NSEC3" {
+		// Match the sign path's RFC 9276 posture so conversion and signing
+		// produce the same zone shape (see issue #97 for salt exposure).
+		params.Set("iterations", "0")
+		params.Set("saltLength", "0")
+	}
+	if _, err := c.doGet(ctx, endpoint, params); err != nil {
+		return fmt.Errorf("converting zone %q to %s: %w", name, nxProof, err)
+	}
+	return nil
+}
+
 // ZoneDNSSECPropertiesGet returns DNSSEC properties for a zone.
 func (c *Client) ZoneDNSSECPropertiesGet(ctx context.Context, name string) (*DNSSECProperties, error) {
 	params := url.Values{

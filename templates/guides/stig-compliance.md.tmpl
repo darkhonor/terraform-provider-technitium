@@ -166,15 +166,58 @@ Plan: 1 to add, 0 to change, 0 to destroy.
 
 ### `silent`
 
-All STIG findings are **suppressed**. No diagnostics are emitted. This mode exists for
-development and testing environments where compliance validation is not needed. It is not
-recommended for any system that will operate under an ATO.
+All STIG findings are **suppressed**. One carve-out: the action-consequence notices for
+destructive DNSSEC changes (the going-insecure warning on unsigning and the key-regeneration
+warning on an acknowledged re-sign) are emitted by the resource, sit outside the STIG finding
+pipeline (the `suppress` list cannot reach them), and still warn under `silent` — no unsign is
+ever silent. The stale-acknowledgment removal warning IS suppressed under `silent`. This mode
+exists for development and testing environments where compliance validation is not needed. It
+is not recommended for any system that will operate under an ATO.
 
 ```text
 $ terraform plan
 
 Plan: 1 to add, 0 to change, 0 to destroy.
 ```
+
+## DNSSEC parameter changes and the acknowledgment gate
+
+Changing `dnssec` signing parameters (`algorithm`, `curve`) on a signed Primary zone destroys
+and regenerates its keys — the server has no in-place change. The provider makes every such
+transition a defined, plan-time outcome (issue #96):
+
+* **`nx_proof`-only changes** convert in place (`NSEC` <-> `NSEC3`) with no key change and no gate.
+* **`algorithm`/`curve` changes** are refused at plan time unless the zone declares
+  `change_acknowledgment = "<ALGORITHM>/<CURVE>"` (bare `"RSA"` for RSA) matching the new
+  parameters. With the acknowledgment, the provider unsigns and re-signs; export the new DS
+  records and redistribute trust anchors afterwards (WDNS-22-000055/WDNS-22-000056).
+* **Unsigning** (`enabled = false`, or removing the `dnssec` block) always draws a plan-time
+  going-insecure warning citing RFC 6781 Section 4.2.1.2 (unless the block's values are not
+  known at plan time — values-from-elsewhere — in which case the plan warns that the check is
+  deferred to apply): remove any published parent DS record
+  and wait out its TTL first, and withdraw distributed trust anchors. Under `strict`
+  enforcement the warning escalates to a blocking error unless the zone declares
+  `change_acknowledgment = "unsigned"`. If you are removing the `dnssec` block entirely,
+  keep it with `enabled = false` and the acknowledgment for that apply, and remove the
+  block afterwards — the acknowledgment lives inside the block, so a bare removal has
+  nowhere to carry it.
+* A re-sign acknowledgment left in config after convergence also remains standing consent for
+  that declared transition: if the server later drifts (e.g. re-signed out-of-band with other
+  parameters), the next apply converges back destructively under the surviving token — with
+  the plan-time key-regeneration warning, but without a fresh consent prompt. Remove the
+  acknowledgment once the transition converges.
+* The `"unsigned"` acknowledgment is **standing consent** for that zone's unsign action —
+  its target space has one member, so per-transition scoping is impossible there. Remove it
+  after a deliberate unsign: while it sits in config with no unsign pending, every plan warns
+  that it will authorize a future unsign (that removal warning is the one notice suppressed
+  under `silent`). A token declared at create time draws its removal warning on the next plan.
+* The documented workaround for parameter changes (set `enabled = false`, apply, re-enable
+  with the new parameters) remains available; under `strict` its first step needs
+  `change_acknowledgment = "unsigned"`. Its second step — a fresh sign of an already-unsigned
+  zone — carries no gate: nothing existing is destroyed.
+
+Never lower global `enforcement` to push a destructive transition through — the per-zone
+acknowledgment is scoped consent, visible in the diff.
 
 -> **Tip:** Start with `enforcement = "warn"` to audit your existing configuration, then
 switch to `strict` once all findings are resolved.

@@ -10,6 +10,8 @@ import (
 	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -19,6 +21,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -68,6 +71,11 @@ type DNSSECModel struct {
 	Algorithm types.String `tfsdk:"algorithm"`
 	Curve     types.String `tfsdk:"curve"`
 	NxProof   types.String `tfsdk:"nx_proof"`
+	// ChangeAcknowledgment is deliberately Optional-only (not Computed, no
+	// default), breaking the block's Optional+Computed convention: Computed
+	// is what lets the framework write a value the operator did not declare,
+	// and this attribute must always equal declared config (issue #96).
+	ChangeAcknowledgment types.String `tfsdk:"change_acknowledgment"`
 }
 
 func (r *ZoneResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -185,18 +193,35 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("ECDSA"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("ECDSA", "EDDSA", "RSA"),
+						},
 					},
 					"curve": schema.StringAttribute{
 						Description: "Curve for ECDSA (P256, P384) or EDDSA (ED25519, ED448). Default: P256.",
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("P256"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("P256", "P384", "ED25519", "ED448"),
+						},
 					},
 					"nx_proof": schema.StringAttribute{
 						Description: "NSEC/NSEC3 proof of non-existence. Maps to STIG BIND-9X-001270 (SC-20).",
 						Optional:    true,
 						Computed:    true,
 						Default:     stringdefault.StaticString("NSEC3"),
+						Validators: []validator.String{
+							stringvalidator.OneOf("NSEC", "NSEC3"),
+						},
+					},
+					"change_acknowledgment": schema.StringAttribute{
+						Description: "Operator acknowledgment authorizing a destructive DNSSEC transition on this zone. " +
+							"Set to \"<ALGORITHM>/<CURVE>\" (e.g. \"ECDSA/P384\"; bare \"RSA\" for RSA) to authorize an " +
+							"unsign/re-sign to those parameters, or \"unsigned\" to authorize unsigning (standing " +
+							"consent - remove after use). Required under stig_compliance enforcement \"strict\"; " +
+							"always required for in-place algorithm/curve changes. See the STIG compliance guide.",
+						Optional: true,
 					},
 				},
 			},
@@ -243,6 +268,37 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 			"National Security Systems require ECDSA P384 (not P256) for DNSSEC signing. "+
 				"CNSSI 1253 mandates higher security margins for classified environments. "+
 				"Set dnssec { curve = \"P384\" } to comply.")
+	}
+
+	// Issue #96: algorithm/curve pair validity is config-static — refuse at
+	// plan time on CREATES too (the gate below only runs on updates), so an
+	// invalid pair can never create a zone whose signing then fails, leaving
+	// an orphaned server-side zone with no state.
+	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil &&
+		!plan.DNSSEC.Enabled.IsUnknown() && plan.DNSSEC.Enabled.ValueBool() &&
+		!plan.DNSSEC.Algorithm.IsUnknown() && !plan.DNSSEC.Curve.IsUnknown() &&
+		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
+		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
+			fmt.Sprintf("%s/%s is not a signable combination. Valid: ECDSA with P256 or P384; "+
+				"EDDSA with ED25519 or ED448; RSA (curve ignored).",
+				plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()))
+	}
+
+	// Issue #96: posture-scaled DNSSEC change gate — plan-time diagnostics
+	// for parameter changes, unsign transitions, and stale acknowledgments.
+	// Runs only on updates of Primary zones (creates have no prior state;
+	// replace plans are skipped inside the gate via IsReplace).
+	if plan.Type.ValueString() == "Primary" && !req.State.Raw.IsNull() {
+		// Branch on the LOCAL state-read result, and never early-return on
+		// the gate's own errors: ModifyPlan accumulates diagnostics so the
+		// zone-type validations and the STIG engine still report alongside
+		// a gate refusal (and alongside the non-returning NSS error above).
+		var state ZoneResourceModel
+		stateDiags := req.State.Get(ctx, &state)
+		resp.Diagnostics.Append(stateDiags...)
+		if !stateDiags.HasError() {
+			applyGateDiags(evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture())), &resp.Diagnostics)
+		}
 	}
 
 	// Zone type validation for zone_transfer_tsig_key_names
@@ -306,6 +362,20 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	// Issue #96: revalidate the algorithm/curve pair with RESOLVED values
+	// before the zone exists. The ModifyPlan check skips unknowns (values
+	// from another resource), so a pair that resolves invalid at apply must
+	// be refused HERE — after ZoneCreate a failed sign would orphan a
+	// server-side zone with no state.
+	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() &&
+		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
+		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
+			fmt.Sprintf("%s/%s is not a signable combination (values resolved at apply). Valid: ECDSA "+
+				"with P256 or P384; EDDSA with ED25519 or ED448; RSA (curve ignored). The zone was NOT created.",
+				plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()))
+		return
+	}
+
 	// Create zone
 	domain, err := r.client.ZoneCreate(ctx,
 		plan.Name.ValueString(),
@@ -325,7 +395,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
-	// Handle DNSSEC signing (NSS P256→P384 upgrade already handled in ModifyPlan)
+	// Handle DNSSEC signing at create.
 	if plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() && plan.Type.ValueString() == "Primary" {
 		err := r.client.ZoneDNSSECSign(ctx,
 			plan.Name.ValueString(),
@@ -389,33 +459,78 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
+	// Issue #96: evaluate the DNSSEC gate BEFORE any server mutation — the
+	// defense-in-depth error return must not strand half-applied options.
+	var gateRes dnssecGateResult
+	if plan.Type.ValueString() == "Primary" {
+		gateRes = evaluateDNSSECGate(gateInputFromModels(&plan, &state, r.posture()))
+		if len(gateRes.Errors) > 0 {
+			// Defense in depth; ModifyPlan already errored at plan time.
+			applyGateErrors(gateRes, &resp.Diagnostics)
+			return
+		}
+	}
+
 	// Update zone options
 	if err := r.setZoneOptions(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error updating zone options", err.Error())
 		return
 	}
 
-	// Handle DNSSEC changes
+	// Handle DNSSEC changes (issue #96): gate-driven dispatch. The same
+	// gateInputFromModels call ModifyPlan uses selects the action here, so
+	// the two paths cannot drift.
 	if plan.Type.ValueString() == "Primary" {
-		planDNSSECEnabled := plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool()
-		stateDNSSECEnabled := state.DNSSECStatus.ValueString() != "Unsigned" && state.DNSSECStatus.ValueString() != ""
-
-		if planDNSSECEnabled && !stateDNSSECEnabled {
-			// Sign zone
-			err := r.client.ZoneDNSSECSign(ctx,
+		// No unresolved-values guard here: if HasUnknown were true the gate
+		// returned Action "none" (two-function tautology — the guard would be
+		// dead code), and Terraform's apply contract resolves plan unknowns
+		// before Update runs.
+		switch gateRes.Action {
+		case "sign":
+			if err := r.client.ZoneDNSSECSign(ctx,
 				plan.Name.ValueString(),
 				plan.DNSSEC.Algorithm.ValueString(),
 				plan.DNSSEC.Curve.ValueString(),
 				plan.DNSSEC.NxProof.ValueString(),
-			)
-			if err != nil {
+			); err != nil {
 				resp.Diagnostics.AddError("Error signing zone with DNSSEC", err.Error())
 				return
 			}
-		} else if !planDNSSECEnabled && stateDNSSECEnabled {
-			// Unsign zone
+		case "unsign":
 			if err := r.client.ZoneDNSSECUnsign(ctx, plan.Name.ValueString()); err != nil {
 				resp.Diagnostics.AddError("Error unsigning zone", err.Error())
+				return
+			}
+		case "convert_nxproof":
+			if err := r.client.ZoneDNSSECConvertNxProof(ctx, plan.Name.ValueString(), plan.DNSSEC.NxProof.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Error converting zone proof of non-existence", err.Error())
+				return
+			}
+		case "resign":
+			if err := r.client.ZoneDNSSECUnsign(ctx, plan.Name.ValueString()); err != nil {
+				resp.Diagnostics.AddError("Error unsigning zone to change DNSSEC parameters", err.Error())
+				return
+			}
+			if err := r.client.ZoneDNSSECSign(ctx,
+				plan.Name.ValueString(),
+				plan.DNSSEC.Algorithm.ValueString(),
+				plan.DNSSEC.Curve.ValueString(),
+				plan.DNSSEC.NxProof.ValueString(),
+			); err != nil {
+				// Partial-failure recovery: the zone is now UNSIGNED on the
+				// server. Persist the real state before returning so the next
+				// plan sees unsigned and converges via a fresh sign — without
+				// this, stale signed-state deadlocks the operator.
+				resp.Diagnostics.AddError("Error re-signing zone with new DNSSEC parameters",
+					"The zone was unsigned but re-signing failed — it is currently UNSIGNED on the server. "+
+						"The refreshed state has been saved; the next apply will retry the sign with the declared "+
+						"parameters — if the server rejected a parameter, correct it before re-applying. "+
+						"Original error: "+err.Error())
+				if rerr := r.readZoneState(ctx, &plan); rerr != nil {
+					resp.Diagnostics.AddError("Error refreshing state after failed re-sign", rerr.Error())
+					return
+				}
+				resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 				return
 			}
 		}

@@ -19,12 +19,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dynamic_update_network_acl` (RFC 2136 dynamic updates).
 - `technitium_server_settings`: web service TLS settings.
 - TLS acceptance-test environment (`docker-compose.test.tls.yml`).
+- `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
+  acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
+  target, `"unsigned"` for unsigning). (#96)
+- `technitium_zone`: `nx_proof` changes on a signed zone now convert in place
+  (NSEC <-> NSEC3) with no key regeneration. (#96)
+- `technitium_zone`: `dnssec.algorithm` and `dnssec.curve` are now validated against their
+  allowed values at plan time, and invalid algorithm/curve combinations (e.g. `EDDSA` with
+  `P256`) are refused before any destructive action. (#96)
+
+### Changed
+
+- **Behavior change for every configuration whose `stig_compliance` block resolves
+  `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
+  never `enabled`, since enforcement defaults to `strict` whenever the block exists:
+  unsigning a signed zone (`dnssec.enabled = false`, or removing the block) is now blocked
+  at plan time until the zone declares `change_acknowledgment = "unsigned"`. Previously the
+  unsign was ungated. In all postures, unsigning now draws a plan-time going-insecure
+  warning (RFC 6781 §4.2.1.2), and `silent` enforcement no longer suppresses these
+  action-consequence notices (it still suppresses STIG findings and the stale-acknowledgment
+  removal warning). (#96)
+- In-place `dnssec.algorithm`/`curve` changes on a signed zone are now refused at plan time
+  with a diagnostic naming the acknowledgment and the manual procedure, instead of being
+  silently ignored and failing with "Provider produced inconsistent result after apply". With
+  the matching acknowledgment the provider performs the unsign/re-sign. (#96)
 
 ### Fixed
 
 - `technitium_record`: refresh no longer aborts when the record's parent
   zone is gone ("No such zone was found"); the record is removed from state
   and planned for recreation (#88).
+- `technitium_zone`: changing `dnssec` `algorithm`/`curve`/`nx_proof` on an already-signed
+  ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
+  result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
+  round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
 
 ## [1.2.1] - 2026-07-26
 
