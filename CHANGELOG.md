@@ -53,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   invalid-token failure against whatever server is listening. A regression test scans the
   package for credential-shaped literals so one cannot be reintroduced. No production code
   changes. (#108)
+- fix(ci): Go 1.26.6 toolchain — clear the govulncheck blocker red on main ([#103])
+
+### Test infrastructure
+
+- test: gate live-server setup behind TF_ACC so `go test ./...` passes on a clean clone ([#109])
+- test: direct client follows the suite's transport instead of hardcoding HTTP ([#111])
 
 ### Dependencies
 
@@ -445,3 +451,6 @@ settings preserve the validator coverage for future runs.
 [#92]: https://github.com/darkhonor/terraform-provider-technitium/pull/92
 [#93]: https://github.com/darkhonor/terraform-provider-technitium/pull/93
 [#95]: https://github.com/darkhonor/terraform-provider-technitium/pull/95
+[#103]: https://github.com/darkhonor/terraform-provider-technitium/pull/103
+[#109]: https://github.com/darkhonor/terraform-provider-technitium/pull/109
+[#111]: https://github.com/darkhonor/terraform-provider-technitium/pull/111
