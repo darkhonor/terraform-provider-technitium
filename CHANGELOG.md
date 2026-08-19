@@ -87,6 +87,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   which is refused at plan time since #100. The block is removed; the `Primary` member zone in
   the same example keeps its own. (#116)
 
+### Security
+
+- Three Go source files carried neither a copyright notice nor an SPDX license identifier:
+  `internal/client/tls_errors.go`, `internal/client/tls_errors_test.go`, and
+  `internal/provider/record_resource_import_test.go`. All 95 files now carry both. MPL-2.0
+  section 3.4 requires those notices to survive redistribution, and this provider is published
+  for environments where license and provenance metadata is inspected rather than assumed. A
+  regression test walks the repository so a file cannot be added without them. (#115)
+
 ### Test infrastructure
 
 - Acceptance-test configurations no longer hand-roll a `provider "technitium"` block pinned to
