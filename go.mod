@@ -2,6 +2,8 @@ module github.com/darkhonor/terraform-provider-technitium
 
 go 1.26.3
 
+toolchain go1.26.6
+
 require (
 	github.com/hashicorp/go-uuid v1.0.3
 	github.com/hashicorp/terraform-plugin-framework v1.19.0
