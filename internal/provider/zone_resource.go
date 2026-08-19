@@ -147,7 +147,7 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 		},
 		Blocks: map[string]schema.Block{
 			"dnssec": schema.SingleNestedBlock{
-				Description: "DNSSEC configuration. Maps to STIG BIND-9X-001650 (SC-20/21/22/23/8/24).",
+				Description: "DNSSEC configuration. Valid on Primary zones only: Technitium can sign Primary zones and refuses every other type, and a Secondary serves the signed data it receives from its primary rather than signing locally. Maps to STIG BIND-9X-001650 (SC-20/21/22/23/8/24).",
 				Attributes: map[string]schema.Attribute{
 					"enabled": schema.BoolAttribute{
 						Description: "Enable DNSSEC signing for the zone.",
@@ -279,6 +279,28 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 				"Invalid zone type for zone_transfer_tsig_key_names",
 				fmt.Sprintf("\"zone_transfer_tsig_key_names\" is only valid for Primary, Secondary, Forwarder, and Catalog zones. Got: %q.", zoneType))
 		}
+	}
+
+	// Zone type validation for dnssec (issue #100).
+	//
+	// Technitium signs Primary zones only: /api/zones/dnssec/sign answers
+	// "No such primary zone was found" for every other type. A dnssec block on
+	// a non-Primary zone therefore declares an intent the provider can never
+	// fulfil — enabled defaults to true, Create/Update skip signing because the
+	// type is not Primary, and refresh reads the zone back unsigned, so the
+	// apply fails with "Provider produced inconsistent result after apply".
+	//
+	// The type is skipped when unknown: it is Required but may be wired from
+	// another resource, and refusing an unknown value would reject
+	// configurations that resolve to Primary at apply time.
+	if plan.DNSSEC != nil && !plan.Type.IsUnknown() && plan.Type.ValueString() != "Primary" {
+		resp.Diagnostics.AddError(
+			"Invalid zone type for dnssec",
+			fmt.Sprintf("The \"dnssec\" block is only valid for Primary zones. Got: %q. "+
+				"Technitium can sign Primary zones only; a %s zone cannot be signed through the "+
+				"API, so the block would never take effect. A Secondary zone serves the signed "+
+				"data it receives from its primary, so sign the zone on the primary instead. "+
+				"Remove the \"dnssec\" block from this zone.", plan.Type.ValueString(), plan.Type.ValueString()))
 	}
 
 	// Zone type validation for primary_zone_transfer_tsig_key_name

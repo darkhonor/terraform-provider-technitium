@@ -40,6 +40,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
   result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
   round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
+- `technitium_zone`: a `dnssec` block on a non-Primary zone is now refused at plan time.
+  Technitium signs Primary zones only (`/api/zones/dnssec/sign` answers "No such primary zone
+  was found" for every other type), so the block declared an intent the provider could never
+  fulfil: `enabled` defaulted to `true`, Create and Update skipped signing because the type was
+  not Primary, and refresh read the zone back unsigned, failing the apply with "Provider
+  produced inconsistent result after apply". A Secondary serves the signed data it receives
+  from its primary, so sign the zone on the primary instead. (#100)
 
 ### Security
 

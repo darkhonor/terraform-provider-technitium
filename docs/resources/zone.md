@@ -100,9 +100,11 @@ resource "technitium_zone" "nss" {
 
 * `primary_zone_transfer_tsig_key_name` - (Optional, String) TSIG key name for authenticating zone transfers from the primary server. Only valid for `Secondary`, `SecondaryForwarder`, and `SecondaryCatalog` zones.
 
-* `dnssec` - (Optional, Block) DNSSEC signing configuration. See [dnssec](#dnssec) below.
+* `dnssec` - (Optional, Block) DNSSEC signing configuration. Only valid for `Primary` zones. See [dnssec](#dnssec) below.
 
 ### dnssec
+
+~> **`Primary` zones only.** Technitium signs `Primary` zones and refuses every other type, so a `dnssec` block on a `Secondary`, `Stub`, `Forwarder`, `Catalog`, `SecondaryForwarder`, or `SecondaryCatalog` zone is rejected at plan time. A `Secondary` serves the signed data it receives from its primary by zone transfer rather than signing locally, so sign the zone on the primary instead.
 
 The `dnssec` block supports the following arguments:
 
