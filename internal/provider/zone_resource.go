@@ -329,6 +329,20 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	// Issue #96: revalidate the algorithm/curve pair with RESOLVED values
+	// before the zone exists. The ModifyPlan check skips unknowns (values
+	// from another resource), so a pair that resolves invalid at apply must
+	// be refused HERE — after ZoneCreate a failed sign would orphan a
+	// server-side zone with no state.
+	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() &&
+		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
+		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
+			fmt.Sprintf("%s/%s is not a signable combination (values resolved at apply). Valid: ECDSA "+
+				"with P256 or P384; EDDSA with ED25519 or ED448; RSA (curve ignored). The zone was NOT created.",
+				plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()))
+		return
+	}
+
 	// Create zone
 	domain, err := r.client.ZoneCreate(ctx,
 		plan.Name.ValueString(),
