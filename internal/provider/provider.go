@@ -35,14 +35,15 @@ type TechnitiumProvider struct {
 
 // TechnitiumProviderModel maps provider schema to Go types.
 type TechnitiumProviderModel struct {
-	ServerURL      types.String         `tfsdk:"server_url"`
-	APIToken       types.String         `tfsdk:"api_token"`
-	SkipTLSVerify  types.Bool           `tfsdk:"skip_tls_verify"`
-	CACertFile     types.String         `tfsdk:"ca_cert_file"`
-	CACertDir      types.String         `tfsdk:"ca_cert_dir"`
-	TLSServerName  types.String         `tfsdk:"tls_server_name"`
-	TLSMinVersion  types.String         `tfsdk:"tls_min_version"`
-	STIGCompliance *STIGComplianceModel `tfsdk:"stig_compliance"`
+	ServerURL       types.String         `tfsdk:"server_url"`
+	APIToken        types.String         `tfsdk:"api_token"`
+	SkipTLSVerify   types.Bool           `tfsdk:"skip_tls_verify"`
+	CACertFile      types.String         `tfsdk:"ca_cert_file"`
+	CACertDir       types.String         `tfsdk:"ca_cert_dir"`
+	TLSServerName   types.String         `tfsdk:"tls_server_name"`
+	TLSMinVersion   types.String         `tfsdk:"tls_min_version"`
+	LegacyTokenAuth types.Bool           `tfsdk:"legacy_token_auth"`
+	STIGCompliance  *STIGComplianceModel `tfsdk:"stig_compliance"`
 }
 
 // STIGComplianceModel maps the stig_compliance block.
@@ -133,6 +134,14 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 				Validators: []validator.String{
 					stringvalidator.OneOf("1.2", "1.3"),
 				},
+			},
+			"legacy_token_auth": schema.BoolAttribute{
+				Description: "Send the API token as a \"token\" query parameter/form field instead of an " +
+					"\"Authorization: Bearer\" header. Only needed for Technitium DNS Server versions before " +
+					"15.0, which do not support the Bearer header form. Leaving this at its default sends the " +
+					"token via header, keeping it out of URLs and any intermediary's access logs. " +
+					"May be set via the TECHNITIUM_LEGACY_TOKEN_AUTH environment variable.",
+				Optional: true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -231,6 +240,19 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	tlsMinVersion, err := resolveTLSMinVersion(config.TLSMinVersion.ValueString(), "TECHNITIUM_TLS_MIN_VERSION", "1.3")
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid TLS configuration", err.Error())
+		return
+	}
+
+	// legacy_token_auth isn't a TLS setting, but resolveTLSBool is really a
+	// generic HCL > env var > default bool resolver, so it's reused here.
+	var legacyTokenAuthPtr *bool
+	if !config.LegacyTokenAuth.IsNull() {
+		v := config.LegacyTokenAuth.ValueBool()
+		legacyTokenAuthPtr = &v
+	}
+	legacyTokenAuth, err := resolveTLSBool(legacyTokenAuthPtr, "TECHNITIUM_LEGACY_TOKEN_AUTH", false)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid legacy_token_auth configuration", err.Error())
 		return
 	}
 
@@ -333,13 +355,14 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 
 	// Create API client
 	apiClient, err := client.NewClient(client.ClientConfig{
-		BaseURL:       serverURL,
-		Token:         apiToken,
-		SkipTLSVerify: skipTLSVerify,
-		CACertFile:    caCertFile,
-		CACertDir:     caCertDir,
-		TLSServerName: tlsServerName,
-		TLSMinVersion: tlsMinVersion,
+		BaseURL:         serverURL,
+		Token:           apiToken,
+		SkipTLSVerify:   skipTLSVerify,
+		CACertFile:      caCertFile,
+		CACertDir:       caCertDir,
+		TLSServerName:   tlsServerName,
+		TLSMinVersion:   tlsMinVersion,
+		LegacyTokenAuth: legacyTokenAuth,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create API client", err.Error())
