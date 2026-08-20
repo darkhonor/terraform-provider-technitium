@@ -7,8 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- The API token is now sent via an `Authorization: Bearer` header by default instead of the
+  `token` URL query parameter/form field, at all three call sites (`doGet`, `doPost`, and the
+  blocked/allowed zone export helper). The token previously appeared in the request URL on
+  every API call, so any HTTP intermediary that logs request URLs — a reverse proxy's access
+  logs, in particular — recorded the live admin API token in cleartext. Technitium DNS Server
+  15.0+ accepts the `Authorization: Bearer` header; set `legacy_token_auth = true` (or export
+  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the old query-string/form behavior against an
+  older server. (GHSA-<pending>)
+
 ### Added
 
+- `legacy_token_auth` provider argument, with a `TECHNITIUM_LEGACY_TOKEN_AUTH` environment
+  variable fallback, to opt back into sending the API token as a `token` query
+  parameter/form field for Technitium DNS Server versions before 15.0 that do not support
+  the `Authorization: Bearer` header. Default: `false`. (GHSA-<pending>)
 - `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
   acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
   target, `"unsigned"` for unsigning). (#96)

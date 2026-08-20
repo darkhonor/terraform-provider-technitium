@@ -85,6 +85,12 @@ Tokens are created in the Technitium web console under *Administration → API T
 tokens as credentials: use a sensitive Terraform variable or a secrets manager rather than
 storing plaintext values in configuration files.
 
+By default, the provider sends the API token via an `Authorization: Bearer` HTTP header,
+which Technitium DNS Server 15.0+ supports. This keeps the token out of the request URL, so
+it cannot end up in a reverse proxy's or load balancer's access logs. For servers older than
+15.0, which only understand the token as a `token` query parameter/form field, set
+`legacy_token_auth = true` (or export `TECHNITIUM_LEGACY_TOKEN_AUTH=true`).
+
 ## TLS Configuration
 
 The provider follows the same TLS configuration model as the
@@ -164,6 +170,11 @@ before switching to `strict`. The plan output will identify all controls that ne
 * `api_token` - (Required, String, Sensitive) API token used to authenticate with the
   Technitium REST API. May be set via `TECHNITIUM_API_TOKEN`.
 
+* `legacy_token_auth` - (Optional, Boolean) Send the API token as a `token` query
+  parameter/form field instead of an `Authorization: Bearer` header. Only needed for
+  Technitium DNS Server versions before 15.0, which do not support the Bearer header form.
+  May be set via `TECHNITIUM_LEGACY_TOKEN_AUTH`. Default: `false`.
+
 ### TLS
 
 * `skip_tls_verify` - (Optional, Boolean) If `true`, TLS certificate verification is
@@ -235,6 +246,7 @@ The `stig_compliance` block is optional. When omitted, no STIG validation is per
 |---|---|
 | `TECHNITIUM_SERVER_URL` | `server_url` |
 | `TECHNITIUM_API_TOKEN` | `api_token` |
+| `TECHNITIUM_LEGACY_TOKEN_AUTH` | `legacy_token_auth` |
 | `TECHNITIUM_SKIP_TLS_VERIFY` | `skip_tls_verify` |
 | `TECHNITIUM_CACERT` | `ca_cert_file` |
 | `TECHNITIUM_CAPATH` | `ca_cert_dir` |

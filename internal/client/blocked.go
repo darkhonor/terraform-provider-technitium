@@ -25,11 +25,21 @@ type filteredZoneListResponse struct {
 // (e.g. /api/blocked/export or /api/allowed/export) and returns one domain
 // per line. It bypasses doGet because the export endpoint returns plain text,
 // not JSON.
+//
+// The API token is sent as an "Authorization: Bearer" header by default; set
+// c.legacyTokenAuth to fall back to the "token" query parameter for
+// Technitium DNS Server versions before 15.0.
 func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string, error) {
-	reqURL := fmt.Sprintf("%s%s?token=%s", c.baseURL, path, url.QueryEscape(c.token))
+	reqURL := fmt.Sprintf("%s%s", c.baseURL, path)
+	if c.legacyTokenAuth {
+		reqURL = fmt.Sprintf("%s?token=%s", reqURL, url.QueryEscape(c.token))
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+	}
+	if !c.legacyTokenAuth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
