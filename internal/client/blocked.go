@@ -43,7 +43,7 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request to %s failed: %w", path, err)
+		return nil, redactTransportErr(path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

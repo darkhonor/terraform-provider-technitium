@@ -68,3 +68,29 @@ func TestExportFilteredZones_LegacyTokenAuth(t *testing.T) {
 		t.Errorf("expected no Authorization header in legacy mode, got %q", gotAuthHeader)
 	}
 }
+
+// TestExportFilteredZones_LegacyTokenAuth_TransportErrorRedactsToken is a
+// regression test for a token leak via *url.Error: exportFilteredZones
+// builds the request URL directly (it bypasses doGet because the export
+// endpoint returns plain text), so in LegacyTokenAuth mode the token
+// travels in that URL's query string. http.Client.Do wraps transport
+// failures in a *url.Error whose Error() method embeds the full request
+// URL verbatim, including the query string — without redaction, the token
+// would land in the error surfaced to the caller.
+func TestExportFilteredZones_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-export-token"
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("example.com\n"))
+	})
+	ts.Close() // closed immediately: any request now fails at the transport layer
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	_, err := exportFilteredZones(context.Background(), c, "/api/blocked/export")
+	if err == nil {
+		t.Fatal("expected a transport error against a closed server")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("error message leaks the API token: %v", err)
+	}
+}

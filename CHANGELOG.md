@@ -17,6 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   15.0+ accepts the `Authorization: Bearer` header; set `legacy_token_auth = true` (or export
   `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the old query-string/form behavior against an
   older server. (GHSA-<pending>)
+- Transport-layer errors (DNS failure, connection refused, timeout, TLS failure) from those
+  same three call sites no longer leak the query-string token in `legacy_token_auth` mode.
+  `http.Client.Do` wraps such failures in a `*url.Error` whose `Error()` method embeds the
+  full request URL, including the query string, and that string was surfacing verbatim in
+  Terraform diagnostics (e.g. "Unable to connect to Technitium server"), CI logs, and any
+  pasted support ticket. Errors are now rebuilt from a query-stripped URL before being
+  returned, on both the header and legacy query-parameter auth paths. (GHSA-<pending>)
 
 ### Added
 

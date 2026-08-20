@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -179,6 +180,39 @@ func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
+// redactURL returns rawURL with its query string stripped. Use it wherever
+// a request URL might end up in an error message: in LegacyTokenAuth mode
+// the "token" query parameter carries the live API token, and query
+// strings never carry anything of similarly sensitive shape in the default
+// header-auth path, so stripping unconditionally is safe on both. If
+// rawURL fails to parse, a fixed placeholder is returned rather than the
+// unparsed (and therefore unredacted) string.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "[redacted URL]"
+	}
+	u.RawQuery = ""
+	return u.String()
+}
+
+// redactTransportErr converts an error returned by (*http.Client).Do into
+// an error safe to surface to the user (e.g. via a Terraform diagnostic).
+// http.Client.Do returns a *url.Error whose Error() method embeds the full
+// request URL verbatim, including the query string — so wrapping it
+// directly with %w would still render that URL (and, in LegacyTokenAuth
+// mode, the API token it carries) whenever the resulting error's Error()
+// is later called. This rebuilds the message from a query-stripped URL and
+// wraps only the innermost cause, so errors.As-based classification (e.g.
+// ClassifyTLSError) keeps working against the unwrapped chain.
+func redactTransportErr(path string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("%s %s failed: %w", urlErr.Op, redactURL(urlErr.URL), urlErr.Err)
+	}
+	return fmt.Errorf("request to %s failed: %w", path, err)
+}
+
 // doGet performs a GET request to the Technitium API and returns the parsed response.
 // Most Technitium API endpoints use GET with query parameters, including mutations.
 //
@@ -206,7 +240,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*AP
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request to %s failed: %w", path, err)
+		return nil, redactTransportErr(path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -238,7 +272,7 @@ func (c *Client) doPost(ctx context.Context, path string, params url.Values) (*A
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request to %s failed: %w", path, err)
+		return nil, redactTransportErr(path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 

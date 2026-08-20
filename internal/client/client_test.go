@@ -193,6 +193,58 @@ func TestDoGet_LegacyTokenAuth(t *testing.T) {
 	}
 }
 
+// TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken is a regression test
+// for a token leak via *url.Error: in LegacyTokenAuth mode the token
+// travels in the request's query string, and http.Client.Do wraps
+// transport failures (DNS, connection refused, TLS, timeout...) in a
+// *url.Error whose Error() method embeds the full request URL verbatim,
+// including that query string. Without redaction, the token would land in
+// the Terraform diagnostic surfaced to the user (see provider.go's
+// "Unable to connect to Technitium server" diagnostic).
+func TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-token-abc123"
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	ts.Close() // closed immediately: any request now fails at the transport layer
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
+	if err == nil {
+		t.Fatal("expected a transport error against a closed server")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("error message leaks the API token: %v", err)
+	}
+}
+
+// TestPing_LegacyTokenAuth_TransportErrorRedactsToken covers the exact call
+// path the provider's connectivity check uses (provider.go calls
+// apiClient.Ping, then surfaces err.Error() verbatim in a diagnostic when
+// the failure isn't classified as TLS-related).
+func TestPing_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-ping-token"
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected a transport error against a closed server")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("error message leaks the API token: %v", err)
+	}
+}
+
 func TestDoGet_APIError(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewEncoder(w).Encode(APIResponse{
