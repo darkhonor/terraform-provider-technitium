@@ -23,7 +23,7 @@ Manages a local Technitium user account. In a cluster, users sync from the Prima
 ### Optional
 
 - `disabled` (Boolean) Disable the account.
-- `display_name` (String) Display name for the account.
+- `display_name` (String) Display name for the account. Removing a previously set value resets it to the server default.
 - `member_of_groups` (Set of String) Groups the user is a member of, e.g. Administrators, DNS Administrators. When unset, group membership is left unmanaged.
 - `session_timeout_seconds` (Number) Session timeout in seconds.
 

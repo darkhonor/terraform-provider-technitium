@@ -75,8 +75,9 @@ func (r *UserResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Sensitive: true,
 			},
 			"display_name": schema.StringAttribute{
-				Description: "Display name for the account.",
-				Optional:    true,
+				Description: "Display name for the account. Removing a previously set value resets it to " +
+					"the server default.",
+				Optional: true,
 			},
 			"member_of_groups": schema.SetAttribute{
 				Description: "Groups the user is a member of, e.g. Administrators, DNS Administrators. " +
@@ -191,6 +192,10 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	}
 	if !plan.DisplayName.IsNull() {
 		params["displayName"] = plan.DisplayName.ValueString()
+	} else if !state.DisplayName.IsNull() {
+		// Omitting displayName makes the server retain the stored value, so a
+		// display name removed from configuration must be reset explicitly.
+		params["displayName"] = ""
 	}
 
 	if len(params) > 0 {
@@ -258,7 +263,10 @@ func (r *UserResource) readState(ctx context.Context, model *UserResourceModel) 
 	model.Username = types.StringValue(user.Username)
 	model.Disabled = types.BoolValue(user.Disabled)
 	model.SessionTimeoutSeconds = types.Int64Value(int64(user.SessionTimeoutSeconds))
-	if !model.DisplayName.IsNull() || user.DisplayName != "" {
+	// display_name is only read back when configured: when it is unset the
+	// server substitutes its own default (the username), and reading that back
+	// would turn a null plan into a concrete value.
+	if !model.DisplayName.IsNull() {
 		model.DisplayName = types.StringValue(user.DisplayName)
 	}
 	if !model.MemberOfGroups.IsNull() {

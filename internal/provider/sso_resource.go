@@ -91,7 +91,8 @@ func (r *SSOResource) Schema(_ context.Context, _ resource.SchemaRequest, resp *
 				Optional: true,
 			},
 			"scopes": schema.ListAttribute{
-				Description: "OIDC scopes to request. Defaults to the server default (openid, profile, email) when unset.",
+				Description: "OIDC scopes to request. Defaults to the server default (openid, profile, email) " +
+					"when unset; removing a previously set list resets the server to those defaults.",
 				Optional:    true,
 				ElementType: types.StringType,
 			},
@@ -138,7 +139,7 @@ func (r *SSOResource) Create(ctx context.Context, req resource.CreateRequest, re
 		return
 	}
 
-	if err := r.apply(ctx, &plan); err != nil {
+	if err := r.apply(ctx, &plan, nil); err != nil {
 		resp.Diagnostics.AddError("Error configuring SSO", err.Error())
 		return
 	}
@@ -166,13 +167,14 @@ func (r *SSOResource) Read(ctx context.Context, req resource.ReadRequest, resp *
 }
 
 func (r *SSOResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var plan SSOResourceModel
+	var plan, state SSOResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if err := r.apply(ctx, &plan); err != nil {
+	if err := r.apply(ctx, &plan, &state); err != nil {
 		resp.Diagnostics.AddError("Error updating SSO config", err.Error())
 		return
 	}
@@ -197,28 +199,42 @@ func (r *SSOResource) ImportState(ctx context.Context, req resource.ImportStateR
 	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
 }
 
-// apply pushes the planned SSO configuration to the server.
-func (r *SSOResource) apply(ctx context.Context, plan *SSOResourceModel) error {
+// apply pushes the planned SSO configuration to the server. prior is the
+// state being replaced (nil on Create). Omitting a parameter makes the server
+// retain its stored value, so an attribute that was set in prior state and is
+// null in the plan must be sent as an explicit empty value to be cleared.
+func (r *SSOResource) apply(ctx context.Context, plan, prior *SSOResourceModel) error {
 	params := map[string]string{}
 
 	params["ssoEnabled"] = fmt.Sprintf("%t", plan.Enabled.ValueBool())
 	if !plan.Authority.IsNull() {
 		params["ssoAuthority"] = plan.Authority.ValueString()
+	} else if prior != nil && !prior.Authority.IsNull() {
+		params["ssoAuthority"] = ""
 	}
 	if !plan.ClientID.IsNull() {
 		params["ssoClientId"] = plan.ClientID.ValueString()
+	} else if prior != nil && !prior.ClientID.IsNull() {
+		params["ssoClientId"] = ""
 	}
 	if !plan.ClientSecret.IsNull() {
 		params["ssoClientSecret"] = plan.ClientSecret.ValueString()
 	}
 	if !plan.MetadataAddress.IsNull() {
 		params["ssoMetadataAddress"] = plan.MetadataAddress.ValueString()
+	} else if prior != nil && !prior.MetadataAddress.IsNull() {
+		params["ssoMetadataAddress"] = ""
 	}
 	if !plan.Scopes.IsNull() && !plan.Scopes.IsUnknown() {
 		var scopes []string
 		plan.Scopes.ElementsAs(ctx, &scopes, false)
 		// ssoScopes is pipe-separated (unlike most list params, which use commas)
 		params["ssoScopes"] = strings.Join(scopes, "|")
+	} else if prior != nil && !prior.Scopes.IsNull() {
+		// An empty ssoScopes does not clear the list; the server resets it to
+		// its default (openid, profile, email), which is what unset means for
+		// this attribute.
+		params["ssoScopes"] = ""
 	}
 	if !plan.AllowSignup.IsNull() && !plan.AllowSignup.IsUnknown() {
 		params["ssoAllowSignup"] = fmt.Sprintf("%t", plan.AllowSignup.ValueBool())
@@ -228,6 +244,8 @@ func (r *SSOResource) apply(ctx context.Context, plan *SSOResourceModel) error {
 	}
 	if !plan.GroupMap.IsNull() && !plan.GroupMap.IsUnknown() {
 		params["ssoGroupMap"] = encodeGroupMap(ctx, plan.GroupMap)
+	} else if prior != nil && !prior.GroupMap.IsNull() {
+		params["ssoGroupMap"] = ""
 	}
 
 	_, err := r.client.SSOSet(ctx, params)
@@ -270,12 +288,21 @@ func (r *SSOResource) readState(ctx context.Context, model *SSOResourceModel) er
 	model.AllowSignup = types.BoolValue(cfg.SSOAllowSignup)
 	model.AllowSignupOnlyForMappedUsers = types.BoolValue(cfg.SSOAllowSignupOnlyForMappedUsers)
 
+	// A null scopes means "server default" and stays null: the server always
+	// reports a non-empty list (clearing ssoScopes resets it to the default
+	// rather than to empty), so reading it back unconditionally would turn an
+	// unset attribute into a concrete list.
 	if !model.Scopes.IsNull() {
 		scopes, _ := types.ListValueFrom(ctx, types.StringType, cfg.SSOScopes)
 		model.Scopes = scopes
 	}
 
-	if !model.GroupMap.IsNull() {
+	// Group mappings grant local group membership on every SSO login, so any
+	// mapping present on the server is read back even when group_map is unset
+	// — it must surface as drift rather than keep granting access invisibly.
+	// A null model with no server-side mappings stays null (both mean "no
+	// mappings").
+	if len(cfg.SSOGroupMap) > 0 || !model.GroupMap.IsNull() {
 		entries := map[string]string{}
 		for _, e := range cfg.SSOGroupMap {
 			entries[e.RemoteGroup] = e.LocalGroup

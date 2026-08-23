@@ -60,6 +60,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   not Primary, and refresh read the zone back unsigned, failing the apply with "Provider
   produced inconsistent result after apply". A Secondary serves the signed data it receives
   from its primary, so sign the zone on the primary instead. (#100)
+- `technitium_sso`: removing `authority`, `client_id`, `metadata_address`, `scopes`, or
+  `group_map` from configuration now sends an explicit clear. The set API retains every
+  omitted parameter, so the removal previously either failed the apply with "Provider
+  produced inconsistent result after apply" or — for `group_map` — was skipped silently
+  while the server kept granting the removed group mappings. Server-side `group_map`
+  entries now also surface as drift during refresh when the attribute is unset. Removing
+  `scopes` resets the server to its default scope list (openid, profile, email), which is
+  what unset already meant for that attribute. (#94)
+- `technitium_user`: removing `display_name` from configuration now resets it on the
+  server instead of retaining the old value and failing the apply with "Provider produced
+  inconsistent result after apply". The server substitutes the username as its
+  display-name default, so the attribute is read back only while it is configured. (#94)
 
 ### Added
 

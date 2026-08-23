@@ -28,7 +28,7 @@ Manages the Technitium DNS Server Single Sign-On (OpenID Connect) configuration.
 - `client_secret` (String, Sensitive) The OpenID Connect (OIDC) Client Secret. The server never returns the real secret, so drift in this attribute cannot be detected — the configured value is authoritative.
 - `group_map` (Map of String) Map of remote (OIDC provider) group names to local group names. SSO users' local group membership is synced from this map on every login.
 - `metadata_address` (String) Custom OIDC metadata discovery URL. Only needed when the SSO provider uses a non-default discovery URL.
-- `scopes` (List of String) OIDC scopes to request. Defaults to the server default (openid, profile, email) when unset.
+- `scopes` (List of String) OIDC scopes to request. Defaults to the server default (openid, profile, email) when unset; removing a previously set list resets the server to those defaults.
 
 ### Read-Only
 
