@@ -1,7 +1,7 @@
 # Terraform Provider for Technitium DNS Server
 
 [![Terraform Registry](https://img.shields.io/badge/terraform-registry-blueviolet)](https://registry.terraform.io/providers/darkhonor/technitium/latest)
-[![Go Version](https://img.shields.io/badge/go-1.26-blue)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.27-blue)](https://go.dev/)
 [![License: MPL-2.0](https://img.shields.io/badge/license-MPL--2.0-orange)](LICENSE)
 [![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/darkhonor/terraform-provider-technitium/badge)](https://scorecard.dev/viewer/?uri=github.com/darkhonor/terraform-provider-technitium)
 
@@ -252,7 +252,7 @@ the [DISA STIG Library](https://www.cyber.mil/stigs).
 | Requirement | Version |
 |---|---|
 | [Terraform](https://www.terraform.io/downloads.html) | >= 1.0 |
-| [Go](https://go.dev/dl/) (for building) | >= 1.26 |
+| [Go](https://go.dev/dl/) (for building) | >= 1.27.1 |
 | [Technitium DNS Server](https://technitium.com/dns/) | >= 13.x |
 
 ## Installation

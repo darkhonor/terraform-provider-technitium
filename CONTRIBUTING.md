@@ -56,7 +56,7 @@ and call out STIG / NIST 800-53 implications when applicable.
 
 ### Prerequisites
 
-- [Go](https://go.dev/) >= 1.26.3 (matches the `go` directive in `go.mod`)
+- [Go](https://go.dev/) >= 1.27.1 (matches the `go` directive in `go.mod`)
 - [Docker](https://www.docker.com/) (for acceptance tests)
 - [Terraform CLI](https://developer.hashicorp.com/terraform/install) (used by `terraform-plugin-testing`)
 - GNU Make
