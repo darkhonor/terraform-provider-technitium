@@ -36,3 +36,7 @@ Listed in order of first contribution.
   (#89), web service TLS settings, and the record refresh fix for a missing
   parent zone (#88). Field-tested against a three-node cluster bootstrap and a
   roughly 200-resource adoption converging to a clean no-op plan. (#94)
+
+* Pushkar Anand (@pushkar-anand) - record `comments` support on `technitium_record`,
+  so an in-place update no longer erases a comment set in the web console.
+  (#139)
