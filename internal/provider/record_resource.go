@@ -62,6 +62,7 @@ type RecordResourceModel struct {
 	ProxyUsername     types.String `tfsdk:"proxy_username"`
 	ProxyPassword     types.String `tfsdk:"proxy_password"`
 	Overwrite         types.Bool   `tfsdk:"overwrite"`
+	Comments          types.String `tfsdk:"comments"`
 	// Computed
 	LastModified types.String `tfsdk:"last_modified"`
 }
@@ -188,6 +189,21 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
 			},
+			"comments": schema.StringAttribute{
+				Description: "Free-text comment stored with the record. When omitted, the provider " +
+					"does not manage the comment and keeps whatever the server holds, including " +
+					"across in-place updates. Set to an empty string to clear it.",
+				Optional: true,
+				// Computed so that an omitted comment adopts the server's value
+				// instead of planning a diff against it. Technitium's update API
+				// assigns the comments parameter unconditionally -- leaving it out
+				// clears the comment -- so every update must send a value, and for
+				// an omitted attribute that value is the one already on the server.
+				Computed: true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+			},
 			"last_modified": schema.StringAttribute{
 				Description: "Timestamp of last modification.",
 				Computed:    true,
@@ -258,6 +274,10 @@ func (r *RecordResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	plan.ID = types.StringValue(buildRecordID(&plan))
 	plan.LastModified = types.StringValue(record.LastModified)
+	// An omitted comment plans as unknown; resolve it to what the server stored.
+	if plan.Comments.IsUnknown() || plan.Comments.IsNull() {
+		plan.Comments = types.StringValue(record.Comments)
+	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
 }
@@ -295,6 +315,7 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 			}
 			state.Value = types.StringValue(client.RecordValueFromRData(recordType, rec.RData))
 			state.LastModified = types.StringValue(rec.LastModified)
+			state.Comments = types.StringValue(rec.Comments)
 
 			// Extract MX/SRV-specific fields
 			if pref, ok := rec.RData["preference"]; ok {
@@ -371,6 +392,22 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	}
 
 	params := r.buildUpdateParams(&state, &plan)
+
+	// Technitium's update API assigns the comments parameter unconditionally:
+	// leaving it out clears the record's comment. The plan normally carries a
+	// known value (the configured one, or the prior state via
+	// UseStateForUnknown). It can still be unknown -- state written before this
+	// attribute existed, refreshed with -refresh=false -- and then the comment
+	// must be read from the server rather than silently erased.
+	if plan.Comments.IsUnknown() || plan.Comments.IsNull() {
+		current, err := r.currentComments(ctx, &state)
+		if err != nil {
+			resp.Diagnostics.AddError("Error reading record comments before update", err.Error())
+			return
+		}
+		params["comments"] = current
+	}
+
 	err := r.client.RecordUpdate(ctx,
 		plan.Name.ValueString(),
 		plan.Zone.ValueString(),
@@ -392,8 +429,15 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	for _, rec := range records {
 		if recordMatchesState(rec, &plan) {
 			plan.LastModified = types.StringValue(rec.LastModified)
+			if plan.Comments.IsUnknown() || plan.Comments.IsNull() {
+				plan.Comments = types.StringValue(rec.Comments)
+			}
 			break
 		}
+	}
+	// Unknown must never reach state, even if the read-back missed the record.
+	if plan.Comments.IsUnknown() || plan.Comments.IsNull() {
+		plan.Comments = types.StringValue(params["comments"])
 	}
 
 	// Rebuild ID — value may have changed
@@ -547,10 +591,19 @@ func (r *RecordResource) buildAddParams(model *RecordResourceModel) map[string]s
 		addOptionalFWDProxyParams(params, model)
 	}
 
+	if !model.Comments.IsNull() && !model.Comments.IsUnknown() {
+		params["comments"] = model.Comments.ValueString()
+	}
+
 	return params
 }
 
 // buildUpdateParams creates type-specific API parameters for record update.
+//
+// comments is set here whenever the plan knows it, including as "" -- that is
+// how a cleared comment reaches the server. When the plan does not know it,
+// Update fills it from the server before sending (see currentComments), because
+// an update request without it clears the record's comment.
 func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map[string]string {
 	params := map[string]string{}
 	recordType := plan.Type.ValueString()
@@ -673,7 +726,26 @@ func (r *RecordResource) buildUpdateParams(state, plan *RecordResourceModel) map
 		params[valueParam] = newValue
 	}
 
+	if !plan.Comments.IsNull() && !plan.Comments.IsUnknown() {
+		params["comments"] = plan.Comments.ValueString()
+	}
+
 	return params
+}
+
+// currentComments returns the comment the server holds for the record in state,
+// or "" when the record carries none or can no longer be matched.
+func (r *RecordResource) currentComments(ctx context.Context, state *RecordResourceModel) (string, error) {
+	records, err := r.client.RecordGet(ctx, state.Name.ValueString(), state.Zone.ValueString())
+	if err != nil {
+		return "", err
+	}
+	for _, rec := range records {
+		if recordMatchesState(rec, state) {
+			return rec.Comments, nil
+		}
+	}
+	return "", nil
 }
 
 // buildDeleteParams creates type-specific API parameters for record deletion.

@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_zone`: `dnssec.algorithm` and `dnssec.curve` are now validated against their
   allowed values at plan time, and invalid algorithm/curve combinations (e.g. `EDDSA` with
   `P256`) are refused before any destructive action. (#96)
+- `technitium_record`: `comments` attribute for the record's free-text comment. When
+  omitted, the provider adopts the server's comment and preserves it across updates; set
+  it to `""` to clear. (#139)
 
 ### Changed
 
@@ -72,6 +75,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   server instead of retaining the old value and failing the apply with "Provider produced
   inconsistent result after apply". The server substitutes the username as its
   display-name default, so the attribute is read back only while it is configured. (#94)
+- `technitium_record`: an in-place update (a `ttl` or `value` change, for example) no longer
+  erases the record's comment. Technitium's update API assigns the `comments` parameter
+  unconditionally and the provider never sent it, so every update cleared any comment set in
+  the web console — most visibly on records adopted with `terraform import`. (#139)
 
 ### Added
 

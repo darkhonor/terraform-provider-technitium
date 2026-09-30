@@ -18,6 +18,9 @@ type Record struct {
 	Disabled     bool                   `json:"disabled"`
 	RData        map[string]interface{} `json:"rData"`
 	LastModified string                 `json:"lastModified"`
+	// Comments is the free-text note stored with the record. The API omits it
+	// (or sends null) when no comment is set; both decode to "".
+	Comments string `json:"comments"`
 }
 
 // RecordAddResponse is the response from adding a record.
