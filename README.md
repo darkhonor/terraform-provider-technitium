@@ -253,7 +253,26 @@ the [DISA STIG Library](https://www.cyber.mil/stigs).
 |---|---|
 | [Terraform](https://www.terraform.io/downloads.html) | >= 1.0 |
 | [Go](https://go.dev/dl/) (for building) | >= 1.27.1 |
-| [Technitium DNS Server](https://technitium.com/dns/) | >= 13.x |
+| [Technitium DNS Server](https://technitium.com/dns/) | >= 15.0 (15.5.1 or later recommended); older servers need `legacy_token_auth = true` |
+
+The acceptance suite runs against Technitium **15.5.1**. Servers older than 15.0 are not
+covered by it.
+
+> **Upgrading to v1.3?** Three things can stop an existing configuration from applying:
+>
+> - **Technitium older than 15.0:** the provider now sends the API token as an
+>   `Authorization: Bearer` header, which older servers ignore. Set
+>   `legacy_token_auth = true` before upgrading the provider, or upgrade the server first.
+> - **Two `FWD` records in one zone with the same `value` and `protocol`:** Technitium cannot
+>   tell them apart, so the provider now refuses to create such a pair and refuses to destroy
+>   or update either record of an existing one. Rebuild the pair so the records differ by
+>   `value` or `protocol`.
+> - **Upgrading Technitium to 15.5 or later:** a forwarder zone whose forwarder has
+>   `dnssec_validation = false` becomes a Negative Trust Anchor (DNSSEC validation off for
+>   that namespace), and the record's comment is returned to any client that queries it.
+>
+> See [Upgrading to v1.3](docs/guides/upgrading-to-v1.3.md) for what to check, how to
+> rebuild forwarder pairs, and the recommended upgrade order.
 
 ## Installation
 
@@ -286,6 +305,7 @@ make install
 
 - [Terraform Registry Documentation](https://registry.terraform.io/providers/darkhonor/technitium/latest/docs)
 - [STIG Compliance Guide](docs/guides/stig-compliance.md)
+- [Upgrading to v1.3](docs/guides/upgrading-to-v1.3.md)
 - [Changelog](CHANGELOG.md)
 - [Security policy](.github/SECURITY.md)
 
