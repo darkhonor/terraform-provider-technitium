@@ -5,6 +5,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -106,69 +107,80 @@ resource "technitium_record" "fwd" {
 `, zone, zone, forwarder, protocol, priority, dnssec)
 }
 
-// TestAccZoneResource_ForwarderSafeDualPattern applies the exact shape shipped in
-// examples/resources/technitium_record/fwd-record.tf and documented under "DNSSEC
-// validation on forwarders": two forwarders on the same zone, each with
-// dnssec_validation set explicitly and each given a DISTINCT forwarder_priority.
+// TestAccZoneResource_ForwarderPriorityOnlyPairRefused covers the pattern the
+// documentation used to recommend and must now refuse: two FWD records to the
+// same forwarder over the same protocol, told apart only by forwarder_priority
+// and dnssec_validation.
 //
-// This exists because the documented workaround is only worth documenting if it
-// actually works. Priority is part of the identity the Technitium API matches on,
-// so records that differ by it stay individually addressable — unlike a pair that
-// differs only by dnssec_validation, which the API cannot tell apart. The final
-// destroy is the part that matters: it must remove both records rather than
-// deleting one twice.
-func TestAccZoneResource_ForwarderSafeDualPattern(t *testing.T) {
+// Technitium identifies an FWD record by forwarder and protocol only. Measured
+// against 15.4 and 15.5.1, deleting one record of such a pair removed the
+// first-created one, and a TTL-only update merged the two -- in both cases
+// silently dropping the DNSSEC-validating record. 15.5 refuses the second add
+// server-side; on 15.4 the provider's own guard refuses it. The regexp accepts
+// either, so the test holds across the server versions CI pins.
+//
+// The previous version of this test asserted the pair was safe. It passed only
+// because destroying both records deletes the first-created record twice, which
+// still empties the zone -- the destroy never proved which record each delete hit.
+//
+// The second step applies the same intent the supported way -- the two
+// forwarders differ by protocol -- and must succeed.
+func TestAccZoneResource_ForwarderPriorityOnlyPairRefused(t *testing.T) {
+	const zone = "acc-fwd-pair.example.com"
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			{
-				Config: testAccZoneForwarderSafeDualConfig("acc-fwd-safe.example.com"),
+				Config:      testAccZoneForwarderPairConfig(zone, "Udp", "Udp"),
+				ExpectError: regexp.MustCompile(`(Forwarder record already exists|record already exists)`),
+			},
+			{
+				Config: testAccZoneForwarderPairConfig(zone, "Udp", "Tcp"),
 				Check: resource.ComposeAggregateTestCheckFunc(
-					resource.TestCheckResourceAttr("technitium_record.validating", "forwarder_priority", "1"),
-					resource.TestCheckResourceAttr("technitium_record.validating", "dnssec_validation", "true"),
-					resource.TestCheckResourceAttr("technitium_record.non_validating", "forwarder_priority", "2"),
-					resource.TestCheckResourceAttr("technitium_record.non_validating", "dnssec_validation", "false"),
-					// Same forwarder and protocol: priority is the only discriminator,
-					// which is exactly what the documentation tells users to rely on.
-					resource.TestCheckResourceAttr("technitium_record.validating", "value", "1.1.1.1"),
-					resource.TestCheckResourceAttr("technitium_record.non_validating", "value", "1.1.1.1"),
 					resource.TestCheckResourceAttr("technitium_record.validating", "protocol", "Udp"),
-					resource.TestCheckResourceAttr("technitium_record.non_validating", "protocol", "Udp"),
+					resource.TestCheckResourceAttr("technitium_record.validating", "dnssec_validation", "true"),
+					resource.TestCheckResourceAttr("technitium_record.non_validating", "protocol", "Tcp"),
+					resource.TestCheckResourceAttr("technitium_record.non_validating", "dnssec_validation", "false"),
 				),
 			},
 		},
 	})
 }
 
-func testAccZoneForwarderSafeDualConfig(zone string) string {
+// testAccZoneForwarderPairConfig renders a validating and a non-validating FWD
+// record to 1.1.1.1. depends_on orders the creates so the second always sees
+// the first, whatever Terraform's parallelism.
+func testAccZoneForwarderPairConfig(zone, validatingProto, fallbackProto string) string {
 	return testAccProviderHCL() + fmt.Sprintf(`
-resource "technitium_zone" "safe_fwd" {
+resource "technitium_zone" "pair_fwd" {
   name = %q
   type = "Forwarder"
 }
 
 resource "technitium_record" "validating" {
-  zone               = technitium_zone.safe_fwd.name
-  name               = technitium_zone.safe_fwd.name
+  zone               = technitium_zone.pair_fwd.name
+  name               = technitium_zone.pair_fwd.name
   type               = "FWD"
   value              = "1.1.1.1"
-  protocol           = "Udp"
+  protocol           = %q
   forwarder_priority = 1
   dnssec_validation  = true
   overwrite          = false
 }
 
 resource "technitium_record" "non_validating" {
-  zone               = technitium_zone.safe_fwd.name
-  name               = technitium_zone.safe_fwd.name
+  zone               = technitium_zone.pair_fwd.name
+  name               = technitium_zone.pair_fwd.name
   type               = "FWD"
   value              = "1.1.1.1"
-  protocol           = "Udp"
+  protocol           = %q
   forwarder_priority = 2
   dnssec_validation  = false
   overwrite          = false
+
+  depends_on = [technitium_record.validating]
 }
-`, zone)
+`, zone, validatingProto, fallbackProto)
 }
 
 // TestAccZoneResource_ForwarderConditional applies the conditional-forwarding
