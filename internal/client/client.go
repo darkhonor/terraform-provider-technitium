@@ -8,6 +8,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,15 +54,23 @@ type ClientConfig struct {
 	TLSServerName  string
 	TLSMinVersion  string // "1.2" or "1.3", default: "1.3"
 	TimeoutSeconds int    // HTTP client timeout, default: 30
+	// LegacyTokenAuth sends the API token via the "token" query parameter
+	// (GET) or form body (POST) instead of an "Authorization: Bearer"
+	// header. Technitium DNS Server versions before 15.0 only understand
+	// the query-string/form form; the header is otherwise preferred
+	// because query strings are routinely captured in cleartext by
+	// reverse-proxy access logs. Default: false.
+	LegacyTokenAuth bool
 }
 
 // Client is the Technitium DNS Server API client.
 type Client struct {
-	baseURL    string
-	token      string
-	username   string
-	password   string
-	httpClient *http.Client
+	baseURL         string
+	token           string
+	username        string
+	password        string
+	legacyTokenAuth bool
+	httpClient      *http.Client
 }
 
 // NewClient creates a new Technitium API client. Authentication is either a
@@ -117,10 +126,11 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	return &Client{
-		baseURL:  cfg.BaseURL,
-		token:    cfg.Token,
-		username: cfg.Username,
-		password: cfg.Password,
+		baseURL:         cfg.BaseURL,
+		token:           cfg.Token,
+		username:        cfg.Username,
+		password:        cfg.Password,
+		legacyTokenAuth: cfg.LegacyTokenAuth,
 		httpClient: &http.Client{
 			Timeout:   time.Duration(cfg.TimeoutSeconds) * time.Second,
 			Transport: transport,
@@ -144,12 +154,12 @@ func (c *Client) Login(ctx context.Context) error {
 	body := strings.NewReader(params.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, body)
 	if err != nil {
-		return fmt.Errorf("creating login request: %w", err)
+		return redactRequestErr("/api/user/login", err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("login request failed: %w", err)
+		return redactTransportErr("/api/user/login", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -158,7 +168,7 @@ func (c *Client) Login(ctx context.Context) error {
 		return fmt.Errorf("reading login response body: %w", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("unexpected HTTP status %d on login: %s", resp.StatusCode, string(respBody))
+		return fmt.Errorf("unexpected HTTP status %d on login: %s", resp.StatusCode, c.errorBody(respBody))
 	}
 
 	// The login response carries the token at the top level, outside the
@@ -244,22 +254,106 @@ func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
+// redactURL returns rawURL with its query string stripped. Use it wherever
+// a request URL might end up in an error message: in LegacyTokenAuth mode
+// the "token" query parameter carries the live API token, and query
+// strings never carry anything of similarly sensitive shape in the default
+// header-auth path, so stripping unconditionally is safe on both. If
+// rawURL fails to parse, a fixed placeholder is returned rather than the
+// unparsed (and therefore unredacted) string.
+func redactURL(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return "[redacted URL]"
+	}
+	u.RawQuery = ""
+	return u.String()
+}
+
+// redactTransportErr converts an error returned by (*http.Client).Do into
+// an error safe to surface to the user (e.g. via a Terraform diagnostic).
+// http.Client.Do returns a *url.Error whose Error() method embeds the full
+// request URL verbatim, including the query string — so wrapping it
+// directly with %w would still render that URL (and, in LegacyTokenAuth
+// mode, the API token it carries) whenever the resulting error's Error()
+// is later called. This rebuilds the message from a query-stripped URL and
+// wraps only the innermost cause, so errors.As-based classification (e.g.
+// ClassifyTLSError) keeps working against the unwrapped chain.
+func redactTransportErr(path string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("%s %s failed: %w", urlErr.Op, redactURL(urlErr.URL), urlErr.Err)
+	}
+	return fmt.Errorf("request to %s failed: %w", path, err)
+}
+
+// redactRequestErr is the request-creation counterpart of redactTransportErr.
+// http.NewRequestWithContext fails with a *url.Error when the URL does not
+// parse -- a server_url with a stray space, for example -- and that error's
+// message embeds the raw URL, query string included. redactURL cannot parse
+// such a URL either, so the URL is replaced by its placeholder.
+func redactRequestErr(path string, err error) error {
+	var urlErr *url.Error
+	if errors.As(err, &urlErr) {
+		return fmt.Errorf("creating request to %s: %s %s: %w", path, urlErr.Op, redactURL(urlErr.URL), urlErr.Err)
+	}
+	return fmt.Errorf("creating request to %s: %w", path, err)
+}
+
+// maxErrorBodyBytes caps how much of a non-200 response body is quoted in an
+// error message.
+const maxErrorBodyBytes = 512
+
+// errorBody renders a non-200 response body for an error message. Reverse
+// proxies and WAFs routinely echo the request URI or form body in their error
+// pages, which in LegacyTokenAuth mode carries the API token (and, on login,
+// the password). Every credential the client holds is replaced -- raw and in
+// its URL-encoded forms -- before the body is truncated, so truncation can
+// never leave a partial credential behind.
+func (c *Client) errorBody(body []byte) string {
+	s := string(body)
+	for _, secret := range []string{c.token, c.password} {
+		if secret == "" {
+			continue
+		}
+		for _, form := range []string{secret, url.QueryEscape(secret), url.PathEscape(secret)} {
+			s = strings.ReplaceAll(s, form, "[REDACTED]")
+		}
+	}
+	if len(s) > maxErrorBodyBytes {
+		s = strings.ToValidUTF8(s[:maxErrorBodyBytes], "") + " [truncated]"
+	}
+	return s
+}
+
 // doGet performs a GET request to the Technitium API and returns the parsed response.
 // Most Technitium API endpoints use GET with query parameters, including mutations.
+//
+// The API token is sent as an "Authorization: Bearer" header by default. Set
+// LegacyTokenAuth on the client to fall back to the "token" query parameter
+// for Technitium DNS Server versions before 15.0.
 func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*APIResponse, error) {
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("token", c.token)
+	if c.legacyTokenAuth {
+		params.Set("token", c.token)
+	}
 
-	reqURL := fmt.Sprintf("%s%s?%s", c.baseURL, path, params.Encode())
+	reqURL := c.baseURL + path
+	if encoded := params.Encode(); encoded != "" {
+		reqURL += "?" + encoded
+	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+		return nil, redactRequestErr(path, err)
+	}
+	if !c.legacyTokenAuth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request to %s failed: %w", path, err)
+		return nil, redactTransportErr(path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -267,22 +361,31 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*AP
 }
 
 // doPost performs a POST request with form-encoded body (used by /api/settings/set).
+//
+// The API token is sent as an "Authorization: Bearer" header by default. Set
+// LegacyTokenAuth on the client to fall back to the "token" form field for
+// Technitium DNS Server versions before 15.0.
 func (c *Client) doPost(ctx context.Context, path string, params url.Values) (*APIResponse, error) {
 	if params == nil {
 		params = url.Values{}
 	}
-	params.Set("token", c.token)
+	if c.legacyTokenAuth {
+		params.Set("token", c.token)
+	}
 
 	reqURL := fmt.Sprintf("%s%s", c.baseURL, path)
 	body := strings.NewReader(params.Encode())
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, body)
 	if err != nil {
-		return nil, fmt.Errorf("creating request to %s: %w", path, err)
+		return nil, redactRequestErr(path, err)
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if !c.legacyTokenAuth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("request to %s failed: %w", path, err)
+		return nil, redactTransportErr(path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
 
@@ -297,7 +400,7 @@ func (c *Client) parseResponse(resp *http.Response) (*APIResponse, error) {
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected HTTP status %d: %s", resp.StatusCode, string(body))
+		return nil, fmt.Errorf("unexpected HTTP status %d: %s", resp.StatusCode, c.errorBody(body))
 	}
 
 	var apiResp APIResponse

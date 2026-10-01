@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `dynamic_update_network_acl` (RFC 2136 dynamic updates).
 - `technitium_server_settings`: web service TLS settings.
 - TLS acceptance-test environment (`docker-compose.test.tls.yml`).
+- `legacy_token_auth` provider argument, with a `TECHNITIUM_LEGACY_TOKEN_AUTH` environment
+  variable fallback, to opt back into sending the API token as a `token` query
+  parameter/form field for Technitium DNS Server versions before 15.0 that do not support
+  the `Authorization: Bearer` header. Default: `false`. (GHSA-27mx-6hfq-f887)
 - `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
   acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
   target, `"unsigned"` for unsigning). (#96)
@@ -30,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Breaking change for Technitium DNS Server versions before 15.0:** the API token is now sent
+  as an `Authorization: Bearer` header by default, which pre-15.0 servers ignore. Every request
+  then fails as `invalid-token`. Set `legacy_token_auth = true` (or export
+  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the query-parameter behavior; the provider's
+  "Unable to connect" diagnostic now says so when it sees that failure under the default auth
+  mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
 - **Behavior change for every configuration whose `stig_compliance` block resolves
   `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
   never `enabled`, since enforcement defaults to `strict` whenever the block exists:
@@ -82,6 +92,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- The API token is now sent via an `Authorization: Bearer` header by default instead of the
+  `token` URL query parameter/form field, at all three call sites (`doGet`, `doPost`, and the
+  blocked/allowed zone export helper). The token previously appeared in the request URL on
+  every API call, so any HTTP intermediary that logs request URLs — a reverse proxy's access
+  logs, in particular — recorded the live admin API token in cleartext. Technitium DNS Server
+  15.0+ accepts the `Authorization: Bearer` header; set `legacy_token_auth = true` (or export
+  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the old query-string/form behavior against an
+  older server. (GHSA-27mx-6hfq-f887)
+- Transport-layer errors (DNS failure, connection refused, timeout, TLS failure) from those
+  same three call sites no longer leak the query-string token in `legacy_token_auth` mode.
+  `http.Client.Do` wraps such failures in a `*url.Error` whose `Error()` method embeds the
+  full request URL, including the query string, and that string was surfacing verbatim in
+  Terraform diagnostics (e.g. "Unable to connect to Technitium server"), CI logs, and any
+  pasted support ticket. Errors are now rebuilt from a query-stripped URL before being
+  returned, on both the header and legacy query-parameter auth paths. (GHSA-27mx-6hfq-f887)
+- Request-construction failures (an unparseable `server_url`, for example) no longer leak the
+  query-string token in `legacy_token_auth` mode. `http.NewRequestWithContext` returns the same
+  `*url.Error` shape as a transport failure, embedding the raw URL, and four call sites
+  (`doGet`, `doPost`, the blocked/allowed zone export helper, and session login) wrapped it
+  verbatim. They now redact it the same way. (GHSA-27mx-6hfq-f887)
+- A non-200 HTTP response body is no longer quoted verbatim into errors. Reverse-proxy and WAF
+  error pages routinely echo the request URI or form body, which in `legacy_token_auth` mode
+  carries the API token and on session login carries the password. The body is now scrubbed of
+  every credential the client holds, raw and URL-encoded, and truncated to 512 bytes.
+  (GHSA-27mx-6hfq-f887)
 - The acceptance-test suite no longer carries a hardcoded API token literal. The helper that
   resolves the test credential had a baked-in 64-character fallback used whenever
   `TECHNITIUM_API_TOKEN` was unset. The value authenticated only to a disposable test

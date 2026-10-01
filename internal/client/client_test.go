@@ -108,8 +108,11 @@ func TestZoneCreate_ForwarderCreatesEmptyZone(t *testing.T) {
 
 func TestDoGet_Success(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Query().Get("token") != "test-token" {
-			t.Error("token not passed in query params")
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("expected Authorization: Bearer test-token, got %q", r.Header.Get("Authorization"))
+		}
+		if r.URL.Query().Has("token") {
+			t.Error("token must not be passed in query params by default")
 		}
 		if err := json.NewEncoder(w).Encode(APIResponse{
 			Status:   "ok",
@@ -127,6 +130,118 @@ func TestDoGet_Success(t *testing.T) {
 	}
 	if resp.Status != "ok" {
 		t.Errorf("expected status ok, got %s", resp.Status)
+	}
+}
+
+// TestDoGet_TokenViaBearerHeader is a regression test for the default
+// authentication mode: the token must reach the server as an Authorization
+// header, and the request URL must carry no "token" query parameter at all
+// (not even an empty one), since any intermediary logging the URL would
+// otherwise still capture the token shape or value.
+func TestDoGet_TokenViaBearerHeader(t *testing.T) {
+	var gotAuthHeader string
+	var gotRawQuery string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		gotRawQuery = r.URL.RawQuery
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "super-secret-token"})
+	params := url.Values{"zone": {"example.com"}}
+	if _, err := c.doGet(context.Background(), "/api/zones/options/get", params); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotAuthHeader != "Bearer super-secret-token" {
+		t.Errorf("expected Authorization: Bearer super-secret-token, got %q", gotAuthHeader)
+	}
+	if strings.Contains(gotRawQuery, "token") {
+		t.Errorf("expected no token in query string, got %q", gotRawQuery)
+	}
+}
+
+// TestDoGet_LegacyTokenAuth verifies that setting LegacyTokenAuth preserves
+// the pre-15.0 behavior of sending the token as a query parameter, for
+// operators on older Technitium DNS Server versions that don't understand
+// the Authorization header.
+func TestDoGet_LegacyTokenAuth(t *testing.T) {
+	var gotAuthHeader string
+	var gotToken string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		gotToken = r.URL.Query().Get("token")
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "legacy-token", LegacyTokenAuth: true})
+	if _, err := c.doGet(context.Background(), "/api/zones/list", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotToken != "legacy-token" {
+		t.Errorf("expected token=legacy-token in query params, got %q", gotToken)
+	}
+	if gotAuthHeader != "" {
+		t.Errorf("expected no Authorization header in legacy mode, got %q", gotAuthHeader)
+	}
+}
+
+// TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken is a regression test
+// for a token leak via *url.Error: in LegacyTokenAuth mode the token
+// travels in the request's query string, and http.Client.Do wraps
+// transport failures (DNS, connection refused, TLS, timeout...) in a
+// *url.Error whose Error() method embeds the full request URL verbatim,
+// including that query string. Without redaction, the token would land in
+// the Terraform diagnostic surfaced to the user (see provider.go's
+// "Unable to connect to Technitium server" diagnostic).
+func TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-token-abc123"
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	ts.Close() // closed immediately: any request now fails at the transport layer
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
+	if err == nil {
+		t.Fatal("expected a transport error against a closed server")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("error message leaks the API token: %v", err)
+	}
+}
+
+// TestPing_LegacyTokenAuth_TransportErrorRedactsToken covers the exact call
+// path the provider's connectivity check uses (provider.go calls
+// apiClient.Ping, then surfaces err.Error() verbatim in a diagnostic when
+// the failure isn't classified as TLS-related).
+func TestPing_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-ping-token"
+
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	err := c.Ping(context.Background())
+	if err == nil {
+		t.Fatal("expected a transport error against a closed server")
+	}
+	if strings.Contains(err.Error(), secretToken) {
+		t.Errorf("error message leaks the API token: %v", err)
 	}
 }
 
@@ -216,8 +331,11 @@ func TestDoPost_Success(t *testing.T) {
 		if r.Method != http.MethodPost {
 			t.Errorf("expected POST, got %s", r.Method)
 		}
-		if r.FormValue("token") != "test-token" {
-			t.Error("token not passed in form body")
+		if r.Header.Get("Authorization") != "Bearer test-token" {
+			t.Errorf("expected Authorization: Bearer test-token, got %q", r.Header.Get("Authorization"))
+		}
+		if r.FormValue("token") != "" {
+			t.Error("token must not be passed in form body by default")
 		}
 		if r.FormValue("setting") != "value1" {
 			t.Error("expected setting=value1 in form body")
@@ -236,6 +354,33 @@ func TestDoPost_Success(t *testing.T) {
 	}
 	if resp.Status != "ok" {
 		t.Errorf("expected status ok, got %s", resp.Status)
+	}
+}
+
+// TestDoPost_LegacyTokenAuth verifies that setting LegacyTokenAuth preserves
+// the pre-15.0 behavior of sending the token as a form field.
+func TestDoPost_LegacyTokenAuth(t *testing.T) {
+	var gotAuthHeader string
+	var gotToken string
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		gotAuthHeader = r.Header.Get("Authorization")
+		gotToken = r.FormValue("token")
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("failed to encode response: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "legacy-token", LegacyTokenAuth: true})
+	if _, err := c.doPost(context.Background(), "/api/settings/set", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if gotToken != "legacy-token" {
+		t.Errorf("expected token=legacy-token in form body, got %q", gotToken)
+	}
+	if gotAuthHeader != "" {
+		t.Errorf("expected no Authorization header in legacy mode, got %q", gotAuthHeader)
 	}
 }
 
