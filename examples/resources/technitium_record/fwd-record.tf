@@ -20,10 +20,10 @@ resource "technitium_record" "quad9_forwarder" {
 # the record above by value and protocol, which keeps the two independently
 # addressable.
 #
-# When several forwarders share a zone, make sure any two differ by something
-# other than dnssec_validation alone — value, protocol or forwarder_priority.
-# Records that differ ONLY by dnssec_validation cannot be told apart by the
-# Technitium API and one of them can be silently lost. See "DNSSEC validation on
+# When several forwarders share a zone, no two may share both value and
+# protocol. Technitium identifies a forwarder record by those two alone;
+# forwarder_priority and dnssec_validation do not tell records apart, and the
+# provider refuses a pair that differs only by them. See "DNSSEC validation on
 # forwarders" in the resource documentation.
 resource "technitium_record" "cloudflare_fallback" {
   zone               = technitium_zone.root_forwarder.name

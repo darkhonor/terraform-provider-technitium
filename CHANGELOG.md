@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Behavior change for `FWD` records:** two `technitium_record` resources with the same
+  `value` and `protocol` in one zone are no longer accepted, whatever their
+  `forwarder_priority` or `dnssec_validation`. Create with `overwrite = false` is refused when
+  such a record exists, and destroy or update of either record of an existing pair is refused
+  until the pair is rebuilt with distinct values or protocols. Configurations whose forwarders
+  differ by `value` or `protocol` are unaffected. (#141)
 - **Breaking change for Technitium DNS Server versions before 15.0:** the API token is now sent
   as an `Authorization: Bearer` header by default, which pre-15.0 servers ignore. Every request
   then fails as `invalid-token`. Set `legacy_token_auth = true` (or export
@@ -92,6 +98,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- `technitium_record`: the documentation recommended telling two `FWD` records to the same
+  forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
+  forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying
+  one record of such a pair deleted whichever was created first, and an in-place update merged
+  the two, both reported as success. In the recommended validating/non-validating pair the
+  record silently lost was the DNSSEC-validating one, and on Technitium 15.5+ a Conditional
+  Forwarder zone left with only non-validating forwarders becomes a Negative Trust Anchor. The
+  provider now refuses to create such a pair and refuses to destroy or update either record of
+  an existing one; refresh warns about existing pairs, and the documentation describes how to
+  rebuild them. Not externally exploitable: only an operator applying configuration can
+  trigger it. (#141)
 - The API token is now sent via an `Authorization: Bearer` header by default instead of the
   `token` URL query parameter/form field, at all three call sites (`doGet`, `doPost`, and the
   blocked/allowed zone export helper). The token previously appeared in the request URL on
