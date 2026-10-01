@@ -66,6 +66,10 @@ it cannot end up in a reverse proxy's or load balancer's access logs. For server
 15.0, which only understand the token as a `token` query parameter/form field, set
 `legacy_token_auth = true` (or export `TECHNITIUM_LEGACY_TOKEN_AUTH=true`).
 
+-> **Upgrading from v1.2?** See [Upgrading to v1.3](guides/upgrading-to-v1.3.md) for the
+two changes that can stop an existing configuration from applying, and for what changes when
+the server moves to Technitium 15.5 or later.
+
 ## TLS Configuration
 
 The provider follows the same TLS configuration model as the

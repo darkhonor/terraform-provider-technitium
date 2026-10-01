@@ -148,6 +148,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- New **Upgrading to v1.3** guide (`docs/guides/upgrading-to-v1.3.md`), linked from the README
+  and the provider index: supported server versions, the Bearer-auth and forwarder-identity
+  changes and what to do about each, the two Technitium 15.5 server changes that affect managed
+  forwarders (duplicate forwarder records refused; non-validating forwarder zones become
+  Negative Trust Anchors that return the record comment to clients), and a recommended upgrade
+  order. The README's server requirement moves from `>= 13.x` to `>= 15.0`, the oldest version
+  the default Bearer authentication supports, with 15.5.1 recommended.
 - Resource and data-source `page_title` values now use the tfplugindocs default,
   `"<name> <Type> - terraform-provider-technitium"`, replacing `"... - Technitium DNS Server"`.
   The product name in that slot implies an official relationship with Technitium that does not
