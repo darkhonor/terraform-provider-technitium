@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -35,16 +36,17 @@ type TechnitiumProvider struct {
 
 // TechnitiumProviderModel maps provider schema to Go types.
 type TechnitiumProviderModel struct {
-	ServerURL      types.String         `tfsdk:"server_url"`
-	APIToken       types.String         `tfsdk:"api_token"`
-	Username       types.String         `tfsdk:"username"`
-	Password       types.String         `tfsdk:"password"`
-	SkipTLSVerify  types.Bool           `tfsdk:"skip_tls_verify"`
-	CACertFile     types.String         `tfsdk:"ca_cert_file"`
-	CACertDir      types.String         `tfsdk:"ca_cert_dir"`
-	TLSServerName  types.String         `tfsdk:"tls_server_name"`
-	TLSMinVersion  types.String         `tfsdk:"tls_min_version"`
-	STIGCompliance *STIGComplianceModel `tfsdk:"stig_compliance"`
+	ServerURL       types.String         `tfsdk:"server_url"`
+	APIToken        types.String         `tfsdk:"api_token"`
+	Username        types.String         `tfsdk:"username"`
+	Password        types.String         `tfsdk:"password"`
+	SkipTLSVerify   types.Bool           `tfsdk:"skip_tls_verify"`
+	CACertFile      types.String         `tfsdk:"ca_cert_file"`
+	CACertDir       types.String         `tfsdk:"ca_cert_dir"`
+	TLSServerName   types.String         `tfsdk:"tls_server_name"`
+	TLSMinVersion   types.String         `tfsdk:"tls_min_version"`
+	LegacyTokenAuth types.Bool           `tfsdk:"legacy_token_auth"`
+	STIGCompliance  *STIGComplianceModel `tfsdk:"stig_compliance"`
 }
 
 // STIGComplianceModel maps the stig_compliance block.
@@ -148,6 +150,14 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 				Validators: []validator.String{
 					stringvalidator.OneOf("1.2", "1.3"),
 				},
+			},
+			"legacy_token_auth": schema.BoolAttribute{
+				Description: "Send the API token as a \"token\" query parameter/form field instead of an " +
+					"\"Authorization: Bearer\" header. Only needed for Technitium DNS Server versions before " +
+					"15.0, which do not support the Bearer header form. Leaving this at its default sends the " +
+					"token via header, keeping it out of URLs and any intermediary's access logs. " +
+					"May be set via the TECHNITIUM_LEGACY_TOKEN_AUTH environment variable.",
+				Optional: true,
 			},
 		},
 		Blocks: map[string]schema.Block{
@@ -258,6 +268,19 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 		return
 	}
 
+	// legacy_token_auth isn't a TLS setting, but resolveTLSBool is really a
+	// generic HCL > env var > default bool resolver, so it's reused here.
+	var legacyTokenAuthPtr *bool
+	if !config.LegacyTokenAuth.IsNull() {
+		v := config.LegacyTokenAuth.ValueBool()
+		legacyTokenAuthPtr = &v
+	}
+	legacyTokenAuth, err := resolveTLSBool(legacyTokenAuthPtr, "TECHNITIUM_LEGACY_TOKEN_AUTH", false)
+	if err != nil {
+		resp.Diagnostics.AddError("Invalid legacy_token_auth configuration", err.Error())
+		return
+	}
+
 	// Extract STIG/NSS booleans before Ping for tiered diagnostics
 	var stigEnabled, nssEnabled bool
 	if config.STIGCompliance != nil {
@@ -357,15 +380,16 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 
 	// Create API client
 	apiClient, err := client.NewClient(client.ClientConfig{
-		BaseURL:       serverURL,
-		Token:         apiToken,
-		Username:      username,
-		Password:      password,
-		SkipTLSVerify: skipTLSVerify,
-		CACertFile:    caCertFile,
-		CACertDir:     caCertDir,
-		TLSServerName: tlsServerName,
-		TLSMinVersion: tlsMinVersion,
+		BaseURL:         serverURL,
+		Token:           apiToken,
+		Username:        username,
+		Password:        password,
+		SkipTLSVerify:   skipTLSVerify,
+		CACertFile:      caCertFile,
+		CACertDir:       caCertDir,
+		TLSServerName:   tlsServerName,
+		TLSMinVersion:   tlsMinVersion,
+		LegacyTokenAuth: legacyTokenAuth,
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to create API client", err.Error())
@@ -400,7 +424,7 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 			}
 		}
 		resp.Diagnostics.AddError("Unable to connect to Technitium server",
-			fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error()))
+			pingFailureDetail(serverURL, err, legacyTokenAuth))
 		return
 	}
 
@@ -687,3 +711,20 @@ func (a *providerConfigAccessor) IsUnknown(path string) bool {
 
 // Interface compliance assertion.
 var _ validators.ConfigAccessor = &providerConfigAccessor{}
+
+// pingFailureDetail renders the connectivity-check failure for a diagnostic.
+// A Technitium server older than 15.0 ignores the Authorization: Bearer header
+// the provider sends by default, so every request it receives looks
+// unauthenticated and fails as invalid-token. That error alone reads as a bad
+// token; the hint names the one-line fix.
+func pingFailureDetail(serverURL string, err error, legacyTokenAuth bool) string {
+	detail := fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error())
+	var apiErr *client.APIError
+	if !legacyTokenAuth && errors.As(err, &apiErr) && apiErr.IsInvalidToken() {
+		detail += "\n\nIf the token is valid and your Technitium DNS Server is older than 15.0, " +
+			"the server does not accept the Authorization: Bearer header this provider sends " +
+			"by default. Set legacy_token_auth = true in the provider block (or " +
+			"TECHNITIUM_LEGACY_TOKEN_AUTH=true) to send the token as a query parameter instead."
+	}
+	return detail
+}

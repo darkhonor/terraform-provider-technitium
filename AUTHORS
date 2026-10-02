@@ -37,6 +37,11 @@ Listed in order of first contribution.
   parent zone (#88). Field-tested against a three-node cluster bootstrap and a
   roughly 200-resource adoption converging to a clean no-op plan. (#94)
 
+* bytestrom (@bytestrom) - found and privately reported the API token leak in
+  request URLs (GHSA-27mx-6hfq-f887), and fixed it: `Authorization: Bearer`
+  token transport by default, the `legacy_token_auth` opt-out for pre-15.0
+  servers, and query-string redaction of transport errors. (#121)
+
 * Pushkar Anand (@pushkar-anand) - record `comments` support on `technitium_record`,
   so an in-place update no longer erases a comment set in the web console.
   (#139)

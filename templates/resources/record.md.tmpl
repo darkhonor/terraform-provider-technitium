@@ -53,38 +53,50 @@ for it, with a redundant pair of upstreams:
 
 #### DNSSEC validation on forwarders
 
-**If you have a single forwarder, none of this applies** — `dnssec_validation` is optional,
-and leaving it out is fine.
+**If each forwarder in a zone has its own address, or its own protocol, none of this
+applies.**
 
-~> **With several forwarders on one zone, do not let any two differ only by
-`dnssec_validation`.** If two `FWD` records share the same `value`, `protocol` and
-`forwarder_priority`, Technitium cannot tell them apart, and you may silently lose one.
-Terraform cannot protect you from it.
+~> **No two `FWD` records in a zone may share both `value` and `protocol`.** Technitium
+identifies a forwarder record by its address and protocol only. `forwarder_priority` and
+`dnssec_validation` do not tell two records apart, so a pair that differs only by those
+cannot be destroyed or updated one at a time. The provider refuses to create such a pair
+and refuses to destroy or update either record of an existing one.
 
-You do not need to know anything about DNSSEC for this to affect you — it is enough that
-two forwarder records look identical apart from that one true/false setting.
-
-**What goes wrong.** The Technitium API identifies a forwarder record by its forwarder
-address, protocol and priority. `dnssec_validation` is not part of that lookup, so when two
-records match on the first three:
+**What goes wrong.** When two records share an address and protocol:
 
 * **Destroying one destroys the wrong one.** The API deletes whichever record was created
-  first and reports success. Terraform believes it removed the resource you asked for.
-* **Changing one merges the two.** An in-place update rewrites one record onto the other,
-  leaving a single record where there were two — again reported as success.
+  first, whatever priority or `dnssec_validation` the request names, and reports success.
+* **Changing one merges the two.** An in-place update — even a TTL-only change — leaves a
+  single record where there were two, again reported as success.
 
-Verified against Technitium DNS Server 15.2 and 15.4.
+For the classic pair — a DNSSEC-validating forwarder plus a non-validating fallback to the
+same upstream — the record silently lost is usually the **validating** one. On Technitium
+15.5 and later, a Conditional Forwarder zone left with only non-validating forwarders is a
+Negative Trust Anchor: DNSSEC validation is switched off for the whole namespace.
 
-**What the provider does about it.** Changing `dnssec_validation` is treated as requiring
-replacement, so the provider never issues the in-place update that merges records. That
-protects the ordinary case of a single forwarder whose setting you want to change. It
-cannot rescue a pair that already collides, because the API offers no way to address one
-without the other.
+Verified against Technitium DNS Server 15.4 and 15.5.1. Technitium 15.5 and later also
+refuse to add the second record of such a pair (`Cannot add record: record already
+exists.`); 15.4 and earlier accept it, which is how existing pairs came about.
 
-**How to stay safe.** Give forwarders that should coexist a distinguishing
-`forwarder_priority` (or a different `value` or `protocol`). All three are part of the
-record's identity, so records that differ by any of them are addressed correctly. Priority
-is usually the natural choice, since it also controls query order — lower is tried first:
+~> Earlier versions of this documentation recommended telling forwarders apart by
+`forwarder_priority`. That was wrong: priority has never been part of a forwarder record's
+identity. If you followed that advice, see **Recovering an existing pair** below.
+
+**What the provider does about it.**
+
+* **Create** with `overwrite = false` is refused when the zone already has a forwarder
+  record with the same address and protocol, on every server version.
+* **Destroy** and **update** are refused when the record shares its address and protocol
+  with another record, and an update that would move a record onto an address and
+  protocol already in use is refused too. Nothing is sent to the server.
+* **Refresh** reports a warning for each managed record that is part of such a pair, so an
+  existing collision surfaces on the next plan rather than on the next destroy.
+* Changing `dnssec_validation` still forces replacement, so changing the setting on a
+  single forwarder never goes through the update path.
+
+**How to stay safe.** Give forwarders that should coexist a different `protocol` or a
+different `value`, and use `forwarder_priority` only to set query order — lower is tried
+first:
 
 ```hcl
 resource "technitium_record" "validating" {
@@ -95,6 +107,7 @@ resource "technitium_record" "validating" {
   protocol           = "Udp"
   forwarder_priority = 1
   dnssec_validation  = true
+  overwrite          = false
 }
 
 resource "technitium_record" "non_validating" {
@@ -102,14 +115,33 @@ resource "technitium_record" "non_validating" {
   name               = technitium_zone.fwd.name
   type               = "FWD"
   value              = "1.1.1.1"
-  protocol           = "Udp"
-  forwarder_priority = 2 # distinct priority keeps the two records addressable
+  protocol           = "Tcp" # a distinct protocol keeps the two records addressable
+  forwarder_priority = 2
   dnssec_validation  = false
+  overwrite          = false
 }
 ```
 
-If you have already created a colliding pair, remove both records and recreate them with
-distinct priorities rather than trying to delete one.
+Before keeping a non-validating fallback at all, consider what it is for: a fallback that
+does not validate is a path around DNSSEC validation whenever the validating forwarder is
+unreachable.
+
+**Recovering an existing pair.** The API cannot remove one record of a colliding pair
+without risking the other, so rebuild them together, in a maintenance window:
+
+1. `terraform state rm` every `technitium_record` resource for that address and protocol in
+   the zone.
+2. Delete those records on the server, from the web console or the API. Each delete removes
+   one record; repeat until none remain for that address and protocol.
+3. Change the configuration so no two `FWD` records in the zone share both `value` and
+   `protocol`.
+4. `terraform apply` to recreate them.
+
+**Record comments are public on Negative Trust Anchors.** On Technitium 15.5 and later, a
+Conditional Forwarder zone whose forwarder record has DNSSEC validation disabled answers
+with an Extended DNS Error (`NegativeTrustAnchor`) whose text is the record's comment,
+visible to any client that queries the zone. Do not put anything in such a comment that
+should not be public.
 
 ### Multiple Records at Same Name (Round-Robin)
 
@@ -142,11 +174,14 @@ distinct priorities rather than trying to delete one.
 * `protocol` - (Optional, String) Protocol for `FWD` records. Valid values: `Udp`, `Tcp`, `Tls`, `Https`, `Quic`.
 
 * `forwarder_priority` - (Optional, Integer) Priority for `FWD` records. Lower values are queried first.
+  Priority sets query order only — it does **not** make two forwarder records with the same
+  `value` and `protocol` distinct. See [DNSSEC validation on forwarders](#dnssec-validation-on-forwarders).
 
 * `dnssec_validation` - (Optional, Boolean) Enable DNSSEC validation for `FWD` records.
   Changing this value forces the record to be **replaced** (destroyed and recreated) rather
-  than updated in place. See [DNSSEC validation on forwarders](#dnssec-validation-on-forwarders)
-  before defining two forwarders that differ only by this setting.
+  than updated in place. It does not make two forwarder records distinct. See
+  [DNSSEC validation on forwarders](#dnssec-validation-on-forwarders) before defining more
+  than one forwarder to the same address.
 
 * `proxy_type`, `proxy_address`, `proxy_port`, `proxy_username`, `proxy_password` - (Optional) Proxy settings for `FWD` records. `proxy_password` is sensitive.
 

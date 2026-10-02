@@ -8,7 +8,7 @@
 
 services:
   technitium:
-    image: technitium/dns-server:latest@sha256:3580381de00ba316748abced1ad0f942aff5a625993fa5dee22a902e26d2c524
+    image: technitium/dns-server:latest@sha256:b8efe03a5e3bdc6e9d2baff3f6e70c382c7f98afa2a7ca66f318d4b58a8d5944
     container_name: technitium-test
     # Run as the host user so bind-mounted test material is owned correctly
     # without chown or relaxed file modes. Defaults to 1000:1000 (typical

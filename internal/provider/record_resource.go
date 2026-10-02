@@ -147,18 +147,15 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 					// RequiresReplace, not in-place update. dnssecValidation is part of
 					// the FWD record's identity (see buildRecordID), but the update API
 					// treats it as a SETTABLE value, not an identifier: there is no
-					// newDnssecValidation parameter, so a record can only be located by
-					// forwarder/protocol/forwarderPriority. Measured against Technitium
-					// 15.2 and 15.4 with two records differing only by this field — an update
-					// rewrote one onto the other and the two COLLAPSED INTO ONE, with
-					// the API returning status "ok". Replacing routes the change through
-					// delete+create, which is well-defined for the ordinary single-record
-					// case. It does NOT rescue an existing colliding pair: delete ignores
-					// dnssecValidation when matching (see buildDeleteParams), so two FWD
-					// records differing only by this field cannot be addressed
-					// individually through the 15.2 and 15.4 APIs at all. The provider can keep
-					// them distinct in state — that is what buildRecordID fixes — but
-					// acting on one without disturbing the other is a server-side gap.
+					// newDnssecValidation parameter. Technitium locates an FWD record
+					// by forwarder and protocol ONLY -- not priority either (measured
+					// against 15.4 and 15.5.1; see record_fwd_guard.go). An update of
+					// one of two records sharing forwarder and protocol COLLAPSES THEM
+					// INTO ONE, with the API returning status "ok". Replacing routes
+					// the change through delete+create, which is well-defined for the
+					// ordinary single-record case. A colliding pair cannot be addressed
+					// individually at all, so the provider refuses to update or delete
+					// one (guardFWDUpdate, Delete) rather than let the server pick.
 					boolplanmodifier.RequiresReplace(),
 				},
 			},
@@ -258,6 +255,19 @@ func (r *RecordResource) Create(ctx context.Context, req resource.CreateRequest,
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if plan.Type.ValueString() == "FWD" && !plan.Overwrite.ValueBool() {
+		fwd, proto := modelFWDKey(&plan)
+		n, err := r.fwdMatchCount(ctx, &plan, fwd, proto)
+		if err != nil {
+			resp.Diagnostics.AddError("Error checking for an existing forwarder record", err.Error())
+			return
+		}
+		if n > 0 {
+			resp.Diagnostics.AddError("Forwarder record already exists", fwdCreateConflictDetail(&plan))
+			return
+		}
 	}
 
 	params := r.buildAddParams(&plan)
@@ -381,6 +391,13 @@ func (r *RecordResource) Read(ctx context.Context, req resource.ReadRequest, res
 		return
 	}
 
+	if recordType == "FWD" {
+		fwd, proto := modelFWDKey(&state)
+		if n := countFWDMatches(records, fwd, proto); n > 1 {
+			resp.Diagnostics.AddWarning("Forwarder records cannot be told apart", fwdCollisionDetail(&state, n))
+		}
+	}
+
 	resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
 }
 
@@ -391,6 +408,12 @@ func (r *RecordResource) Update(ctx context.Context, req resource.UpdateRequest,
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if plan.Type.ValueString() == "FWD" {
+		if !r.guardFWDUpdate(ctx, &state, &plan, &resp.Diagnostics) {
+			return
+		}
 	}
 
 	params := r.buildUpdateParams(&state, &plan)
@@ -455,6 +478,19 @@ func (r *RecordResource) Delete(ctx context.Context, req resource.DeleteRequest,
 	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+
+	if state.Type.ValueString() == "FWD" {
+		fwd, proto := modelFWDKey(&state)
+		n, err := r.fwdMatchCount(ctx, &state, fwd, proto)
+		if err != nil {
+			resp.Diagnostics.AddError("Error checking forwarder records before delete", err.Error())
+			return
+		}
+		if n > 1 {
+			resp.Diagnostics.AddError("Refusing to delete an ambiguous forwarder record", fwdCollisionDetail(&state, n))
+			return
+		}
 	}
 
 	params := r.buildDeleteParams(&state)
@@ -801,11 +837,15 @@ func (r *RecordResource) buildDeleteParams(model *RecordResourceModel) map[strin
 		//   created false,true + delete dnssecValidation=true  -> False deleted
 		//   created false,true + delete dnssecValidation=false -> False deleted
 		//
+		// forwarderPriority is ignored the same way: re-measured against 15.4 and
+		// 15.5.1, deleting the priority-2 record of a pair sharing forwarder and
+		// protocol removed the first-created, priority-1 record.
+		//
 		// So a colliding pair CANNOT be individually destroyed through this API,
-		// with or without this parameter. Sending it costs nothing, makes the
+		// with or without these parameters. Sending them costs nothing, makes the
 		// request state the caller's intent, and starts working the day the
-		// server honours it. It is not a fix — see the schema note on
-		// dnssec_validation for the limitation and how the provider contains it.
+		// server honours them. They are not a fix — Delete refuses an ambiguous
+		// FWD record before reaching this point (see record_fwd_guard.go).
 		if !model.DNSSECValidation.IsNull() {
 			params["dnssecValidation"] = fmt.Sprintf("%t", model.DNSSECValidation.ValueBool())
 		}
