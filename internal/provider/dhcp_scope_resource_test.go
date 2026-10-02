@@ -105,6 +105,36 @@ func TestAccDHCPScopeResource_rename(t *testing.T) {
 	})
 }
 
+// Regression test: a scope update must not wipe standalone
+// technitium_dhcp_reserved_lease reservations on that scope. Before the fix,
+// DHCPScopeSet always sent reservedLeases (empty when the scope declared no
+// inline reserved_leases) and the server treats it as the full replacement
+// list, so the second step's scope update deleted the reservation server-side.
+// The framework's post-apply empty-plan check then fails the step: the
+// reserved lease's refresh finds it gone and plans a re-create.
+func TestAccDHCPScopeResource_updatePreservesStandaloneLease(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDHCPScopeWithStandaloneLease("acc-scope-coexist", 3),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_days", "3"),
+					resource.TestCheckResourceAttr("technitium_dhcp_reserved_lease.standalone", "ip_address", "10.48.0.100"),
+				),
+			},
+			// Scope-only change; the standalone reservation must survive.
+			{
+				Config: testAccDHCPScopeWithStandaloneLease("acc-scope-coexist", 7),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_days", "7"),
+					resource.TestCheckResourceAttr("technitium_dhcp_reserved_lease.standalone", "ip_address", "10.48.0.100"),
+				),
+			},
+		},
+	})
+}
+
 func testAccDHCPScopeBasic(name string) string {
 	return testAccDHCPScopeBasicNamed(name, "10.42.0.50", "10.42.0.250")
 }
@@ -118,6 +148,26 @@ resource "technitium_dhcp_scope" "test" {
   subnet_mask      = "255.255.255.0"
 }
 `, name, start, end)
+}
+
+func testAccDHCPScopeWithStandaloneLease(name string, leaseTimeDays int) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "test" {
+  name             = %q
+  starting_address = "10.48.0.50"
+  ending_address   = "10.48.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  lease_time_days = %d
+}
+
+resource "technitium_dhcp_reserved_lease" "standalone" {
+  scope            = technitium_dhcp_scope.test.name
+  hardware_address = "00-AA-BB-CC-DD-48"
+  ip_address       = "10.48.0.100"
+  host_name        = "coexist"
+}
+`, name, leaseTimeDays)
 }
 
 func testAccDHCPScopeFull(name string) string {
