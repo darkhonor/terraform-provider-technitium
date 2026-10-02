@@ -73,6 +73,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `technitium_dhcp_scope`: a `for_each`/`count` over the resource failed every
+  plan with "Value Conversion Error ... Received unknown value". Terraform
+  validates such a block once before expansion with every `each.*`/`count.*`
+  reference unknown, and the config model's nested collections are native Go
+  slices that cannot represent unknown. ValidateConfig now skips the
+  not-fully-known pass; values it cannot check are rejected by the server at
+  apply time.
 - `technitium_dhcp_scope`: any scope update silently deleted every standalone
   `technitium_dhcp_reserved_lease` reservation on that scope, because the
   `reservedLeases` parameter was always sent to `/api/dhcp/scopes/set` (empty

@@ -24,6 +24,15 @@ var (
 // ValidateConfig checks DHCP scope addressing invariants at plan time.
 // Unknown values (interpolations not yet resolved) are skipped.
 func (r *DHCPScopeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	// Terraform validates for_each/count resources once before expansion with
+	// every each.*/count.* reference unknown. The model's nested collections
+	// are native Go slices, which cannot represent unknown, so Config.Get
+	// would fail the whole plan with a value-conversion error. Skip instead;
+	// values this pass cannot check are rejected by the server at apply time.
+	if !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+
 	var config DHCPScopeResourceModel
 	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
 	if resp.Diagnostics.HasError() {
