@@ -302,8 +302,10 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"reserved_leases": schema.ListNestedAttribute{
-				Description: "Inline MAC-to-IP reservations. Do not combine with standalone " +
-					"technitium_dhcp_reserved_lease resources on the same scope — the two would fight over the same server-side list.",
+				Description: "Inline MAC-to-IP reservations. When this attribute is omitted the scope leaves the " +
+					"server-side reservation list alone, so standalone technitium_dhcp_reserved_lease resources can manage it. " +
+					"Do not combine the two styles on the same scope — a declared list (even an empty one) overwrites the " +
+					"server's list on every scope update.",
 				Optional: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -565,13 +567,20 @@ func (r *DHCPScopeResource) scopeFromModel(ctx context.Context, m *DHCPScopeReso
 			EndingAddress:   excl.EndingAddress.ValueString(),
 		})
 	}
-	for _, lease := range m.ReservedLeases {
-		scope.ReservedLeases = append(scope.ReservedLeases, client.DHCPReservedLease{
-			HostName:        lease.HostName.ValueString(),
-			HardwareAddress: lease.HardwareAddress.ValueString(),
-			Address:         lease.Address.ValueString(),
-			Comments:        lease.Comments.ValueString(),
-		})
+	// nil when the attribute is absent from config, non-nil (possibly empty)
+	// when declared: DHCPScopeSet omits the reservedLeases parameter for nil
+	// so scope updates don't wipe standalone technitium_dhcp_reserved_lease
+	// reservations, while a declared list still overwrites the server's.
+	if m.ReservedLeases != nil {
+		scope.ReservedLeases = make([]client.DHCPReservedLease, 0, len(m.ReservedLeases))
+		for _, lease := range m.ReservedLeases {
+			scope.ReservedLeases = append(scope.ReservedLeases, client.DHCPReservedLease{
+				HostName:        lease.HostName.ValueString(),
+				HardwareAddress: lease.HardwareAddress.ValueString(),
+				Address:         lease.Address.ValueString(),
+				Comments:        lease.Comments.ValueString(),
+			})
+		}
 	}
 
 	return scope

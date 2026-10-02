@@ -148,6 +148,13 @@ func (c *Client) DHCPScopeGet(ctx context.Context, name string) (*DHCPScope, err
 // DHCPScopeSet creates or updates a DHCP scope with the full desired state.
 // Every parameter is always sent so removed values are cleared on the server
 // rather than silently retained. newName, when non-empty, renames the scope.
+//
+// reservedLeases is the one exception to the always-send contract: the same
+// server-side list is also managed by the standalone reserved-lease endpoints
+// (DHCPScopeAddReservedLease / DHCPScopeRemoveReservedLease), so a scope
+// update that always sent it would wipe reservations created that way. A nil
+// ReservedLeases omits the parameter (server keeps its current list); a
+// non-nil slice — including an empty one — sends it and overwrites.
 func (c *Client) DHCPScopeSet(ctx context.Context, scope DHCPScope, newName string) error {
 	params := url.Values{}
 	params.Set("name", scope.Name)
@@ -184,7 +191,9 @@ func (c *Client) DHCPScopeSet(ctx context.Context, scope DHCPScope, newName stri
 	params.Set("tftpServerAddresses", strings.Join(scope.TFTPServerAddresses, ","))
 	params.Set("genericOptions", encodeDHCPGenericOptions(scope.GenericOptions))
 	params.Set("exclusions", encodeDHCPExclusions(scope.Exclusions))
-	params.Set("reservedLeases", encodeDHCPReservedLeases(scope.ReservedLeases))
+	if scope.ReservedLeases != nil {
+		params.Set("reservedLeases", encodeDHCPReservedLeases(scope.ReservedLeases))
+	}
 	params.Set("allowOnlyReservedLeases", strconv.FormatBool(scope.AllowOnlyReservedLeases))
 	params.Set("blockLocallyAdministeredMacAddresses", strconv.FormatBool(scope.BlockLocallyAdministeredMacAddresses))
 	params.Set("ignoreClientIdentifierOption", strconv.FormatBool(scope.IgnoreClientIdentifierOption))

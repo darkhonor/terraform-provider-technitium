@@ -83,7 +83,7 @@ resource "technitium_dhcp_scope" "lan" {
 - `ping_check_enabled` (Boolean) Ping an address before offering it to detect conflicts with statically configured devices.
 - `ping_check_retries` (Number) Maximum number of ping attempts.
 - `ping_check_timeout` (Number) Ping reply timeout in milliseconds.
-- `reserved_leases` (Attributes List) Inline MAC-to-IP reservations. Do not combine with standalone technitium_dhcp_reserved_lease resources on the same scope — the two would fight over the same server-side list. (see [below for nested schema](#nestedatt--reserved_leases))
+- `reserved_leases` (Attributes List) Inline MAC-to-IP reservations. When this attribute is omitted the scope leaves the server-side reservation list alone, so standalone technitium_dhcp_reserved_lease resources can manage it. Do not combine the two styles on the same scope — a declared list (even an empty one) overwrites the server's list on every scope update. (see [below for nested schema](#nestedatt--reserved_leases))
 - `router_address` (String) Default gateway address for clients (option 3).
 - `server_address` (String) Next server (TFTP) address used in bootstrap (siaddr). Defaults to this server's address.
 - `server_host_name` (String) Bootstrap TFTP server host name (sname / option 66).

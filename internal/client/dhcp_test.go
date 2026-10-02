@@ -161,6 +161,67 @@ func TestDHCPScopeSet_WireFormat(t *testing.T) {
 	}
 }
 
+// The reservedLeases parameter is exempt from the always-send clearing
+// contract: the same server-side list is managed by the standalone
+// reserved-lease endpoints, and Technitium keeps the current list when the
+// parameter is omitted. nil must omit; a non-nil empty slice must send the
+// parameter (empty clears).
+func TestDHCPScopeSet_ReservedLeasesNilOmitsParam(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.PostForm == nil {
+			_ = r.ParseForm()
+		}
+		if r.PostForm.Has("reservedLeases") {
+			t.Errorf("reservedLeases must be omitted when nil, got %q", r.FormValue("reservedLeases"))
+		}
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
+	err := c.DHCPScopeSet(context.Background(), DHCPScope{
+		Name:            "lan",
+		StartingAddress: "10.0.0.50",
+		EndingAddress:   "10.0.0.250",
+		SubnetMask:      "255.255.255.0",
+	}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDHCPScopeSet_ReservedLeasesEmptySendsParam(t *testing.T) {
+	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.PostForm == nil {
+			_ = r.ParseForm()
+		}
+		if !r.PostForm.Has("reservedLeases") {
+			t.Error("reservedLeases must be sent when non-nil (empty clears server list)")
+		}
+		if got := r.FormValue("reservedLeases"); got != "" {
+			t.Errorf("reservedLeases: got %q, want empty", got)
+		}
+		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
+			t.Fatalf("encode: %v", err)
+		}
+	})
+	defer ts.Close()
+
+	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: "test-token"})
+	err := c.DHCPScopeSet(context.Background(), DHCPScope{
+		Name:            "lan",
+		StartingAddress: "10.0.0.50",
+		EndingAddress:   "10.0.0.250",
+		SubnetMask:      "255.255.255.0",
+		ReservedLeases:  []DHCPReservedLease{},
+	}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDHCPScopeSet_NoRenameOmitsNewName(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.PostForm == nil {
