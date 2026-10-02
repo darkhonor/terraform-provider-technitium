@@ -41,3 +41,7 @@ Listed in order of first contribution.
   request URLs (GHSA-27mx-6hfq-f887), and fixed it: `Authorization: Bearer`
   token transport by default, the `legacy_token_auth` opt-out for pre-15.0
   servers, and query-string redaction of transport errors. (#121)
+
+* Pushkar Anand (@pushkar-anand) - record `comments` support on `technitium_record`,
+  so an in-place update no longer erases a comment set in the web console.
+  (#139)

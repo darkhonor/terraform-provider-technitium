@@ -369,6 +369,14 @@ resource "technitium_record" "web2" {
 
 * `overwrite` - (Optional, Boolean) Replace existing record set. Default: `true`.
 
+* `comments` - (Optional, String) Free-text comment stored with the record, as shown in the
+  Technitium web console. When omitted, the provider does not manage the comment: it adopts
+  whatever the server holds and carries it through in-place updates unchanged. Set it to `""`
+  to clear the comment. Removing the attribute from the configuration stops managing the
+  comment but leaves it in place on the server.
+  Do not store secrets or PII in comments: the value is not marked sensitive and appears in
+  plan output and state in plain text.
+
 ## Attributes Reference
 
 In addition to the arguments above, the following computed attributes are exported:
