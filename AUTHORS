@@ -45,3 +45,10 @@ Listed in order of first contribution.
 * Pushkar Anand (@pushkar-anand) - record `comments` support on `technitium_record`,
   so an in-place update no longer erases a comment set in the web console.
   (#139)
+
+* Stefano Bertelli (@bartei) - DHCP server management: the
+  `technitium_dhcp_scope` and `technitium_dhcp_reserved_lease` resources, the
+  `technitium_dhcp_scope`, `technitium_dhcp_scopes`, and
+  `technitium_dhcp_leases` data sources, plan-time validation, and the client
+  layer behind them. Written in his fork, bartei/terraform-provider-technitium,
+  and ported onto this tree from there.
