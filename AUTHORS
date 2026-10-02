@@ -52,3 +52,9 @@ Listed in order of first contribution.
   `technitium_dhcp_leases` data sources, plan-time validation, and the client
   layer behind them. Written in his fork, bartei/terraform-provider-technitium,
   and ported onto this tree from there.
+
+* Dustin Sweigart (@dustins) - ported the DHCP work above onto this tree, and
+  fixed two bugs in it: scope updates wiping standalone reserved leases (the
+  `reservedLeases` parameter is now omitted when the attribute is unset), and
+  every plan of a `for_each`/`count` scope failing on unknown values in
+  ValidateConfig; regression tests for both.

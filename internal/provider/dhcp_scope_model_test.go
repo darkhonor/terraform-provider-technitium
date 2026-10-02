@@ -1,4 +1,4 @@
-// Copyright (c) 2026 Alex Ackerman
+// Copyright (c) 2026 Dustin Sweigart
 // SPDX-License-Identifier: MPL-2.0
 
 package provider
