@@ -339,6 +339,8 @@ resource "technitium_record" "web2" {
   whatever the server holds and carries it through in-place updates unchanged. Set it to `""`
   to clear the comment. Removing the attribute from the configuration stops managing the
   comment but leaves it in place on the server.
+  Do not store secrets or PII in comments: the value is not marked sensitive and appears in
+  plan output and state in plain text.
 
 ## Attributes Reference
 

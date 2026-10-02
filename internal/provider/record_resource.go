@@ -192,7 +192,9 @@ func (r *RecordResource) Schema(_ context.Context, _ resource.SchemaRequest, res
 			"comments": schema.StringAttribute{
 				Description: "Free-text comment stored with the record. When omitted, the provider " +
 					"does not manage the comment and keeps whatever the server holds, including " +
-					"across in-place updates. Set to an empty string to clear it.",
+					"across in-place updates. Set to an empty string to clear it. Do not store " +
+					"secrets or PII here: the value is not marked sensitive and appears in plan " +
+					"output and state in plain text.",
 				Optional: true,
 				// Computed so that an omitted comment adopts the server's value
 				// instead of planning a diff against it. Technitium's update API
