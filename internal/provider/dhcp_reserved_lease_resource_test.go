@@ -1,3 +1,4 @@
+// Copyright (c) 2026 Stefano Bertelli
 // Copyright (c) 2026 Alex Ackerman
 // SPDX-License-Identifier: MPL-2.0
 
