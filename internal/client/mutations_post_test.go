@@ -67,12 +67,6 @@ func mutationCases(ctx context.Context) []mutationCase {
 				_, err := c.RecordAdd(ctx, "h.example.test", "example.test", "A", 300, false, map[string]string{"ipAddress": "192.0.2.1"})
 				return err
 			}},
-		{"RecordGet", "/api/zones/records/get",
-			map[string]string{"domain": "h.example.test", "zone": "example.test"},
-			func(c *Client) error {
-				_, err := c.RecordGet(ctx, "h.example.test", "example.test")
-				return err
-			}},
 		{"RecordUpdate", "/api/zones/records/update",
 			map[string]string{"domain": "h.example.test", "zone": "example.test", "type": "A", "ipAddress": "192.0.2.1", "newIpAddress": "192.0.2.2"},
 			func(c *Client) error {
@@ -275,5 +269,34 @@ func TestRecordMutations_SecretsAndSpecialCharsStayInBody(t *testing.T) {
 				t.Errorf("comments body = %q, want exact round-trip", r.form.Get("comments"))
 			}
 		})
+	}
+}
+
+func TestRecordGet_StaysGETWithIdentifiersInQuery(t *testing.T) {
+	const token = "secret-test-token"
+	srv, got := captureServer(t)
+	c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: token})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := c.RecordGet(context.Background(), "h.example.test", "example.test"); err != nil {
+		t.Fatal(err)
+	}
+	if len(*got) != 1 {
+		t.Fatalf("requests = %d, want 1", len(*got))
+	}
+	r := (*got)[0]
+	if r.method != http.MethodGet {
+		t.Errorf("method = %s, want GET", r.method)
+	}
+	q, _ := url.ParseQuery(r.rawQuery)
+	if q.Get("domain") != "h.example.test" || q.Get("zone") != "example.test" {
+		t.Errorf("query = %q, want domain and zone", r.rawQuery)
+	}
+	if r.auth != "Bearer "+token {
+		t.Errorf("Authorization = %q", r.auth)
+	}
+	if strings.Contains(r.rawURL, token) {
+		t.Errorf("token in URL %q", r.rawURL)
 	}
 }

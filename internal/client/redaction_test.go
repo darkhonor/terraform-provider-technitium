@@ -139,8 +139,7 @@ func TestAPIErrorMessage_RedactsCredentials(t *testing.T) {
 	}
 	cases := map[string]func(*Client) error{
 		"parseResponse": func(c *Client) error {
-			_, err := c.RecordGet(context.Background(), "h.example.test", "example.test")
-			return err
+			return c.RecordDelete(context.Background(), "h.example.test", "example.test", "A", map[string]string{"ipAddress": "192.0.2.1"})
 		},
 		"export": func(c *Client) error {
 			_, err := c.BlockedZoneList(context.Background())

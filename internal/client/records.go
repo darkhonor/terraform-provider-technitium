@@ -82,7 +82,7 @@ func (c *Client) RecordGet(ctx context.Context, domain, zone string) ([]Record, 
 		"zone":   {zone},
 	}
 
-	resp, err := c.doPost(ctx, "/api/zones/records/get", qp)
+	resp, err := c.doGet(ctx, "/api/zones/records/get", qp)
 	if err != nil {
 		return nil, fmt.Errorf("getting records for %q in zone %q: %w", domain, zone, err)
 	}
