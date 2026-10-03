@@ -24,7 +24,7 @@ type filteredZoneListResponse struct {
 // exportFilteredZones fetches the plain-text export from the given path
 // (e.g. /api/blocked/export or /api/allowed/export) and returns one domain
 // per line. It bypasses doGet because the export endpoint returns plain text,
-// not JSON, so it applies its own status and error-envelope checks.
+// not JSON.
 //
 // The API token is sent as an "Authorization: Bearer" header by default; set
 // c.legacyTokenAuth to fall back to the "token" query parameter for

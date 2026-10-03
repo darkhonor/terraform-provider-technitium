@@ -171,3 +171,48 @@ func TestExportFilteredZones_NonErrorJSONIsError(t *testing.T) {
 		t.Fatalf("expected error, got domains %v", domains)
 	}
 }
+
+func TestExportFilteredZones_BOMPrefixedEnvelopeIsAPIError(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprint(w, "\ufeff{\"status\":\"invalid-token\",\"errorMessage\":\"Invalid token or session expired.\"}")
+	})
+	defer srv.Close()
+	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: "t"})
+	domains, err := c.BlockedZoneList(context.Background())
+	var apiErr *APIError
+	if !errors.As(err, &apiErr) {
+		t.Fatalf("want *APIError, got err=%v domains=%v", err, domains)
+	}
+}
+
+func TestExportFilteredZones_HTMLOn200RedactsToken(t *testing.T) {
+	const token = "export-secret-token"
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, "<html>Sign in to reach %s</html>", r.URL.RequestURI())
+	})
+	defer srv.Close()
+	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: token, LegacyTokenAuth: true})
+	_, err := c.BlockedZoneList(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("token leaked into error: %v", err)
+	}
+}
+
+func TestExportFilteredZones_JSONOn200RedactsToken(t *testing.T) {
+	const token = "export-secret-token"
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = fmt.Fprintf(w, `{"status":"ok","uri":%q}`, r.URL.RequestURI())
+	})
+	defer srv.Close()
+	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: token, LegacyTokenAuth: true})
+	_, err := c.BlockedZoneList(context.Background())
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), token) {
+		t.Errorf("token leaked into error: %v", err)
+	}
+}

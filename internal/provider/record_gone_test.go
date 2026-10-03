@@ -30,7 +30,7 @@ func TestIsRecordAlreadyGone(t *testing.T) {
 		{"zone does not exist", errors.New("Zone does not exist: example.internal"), true},
 		{"zone was not found", errors.New("The zone was not found"), true},
 		{"unrelated auth error", errors.New("technitium API error (status=invalid-token): Invalid token or session expired."), false},
-		{"unrelated network error", errors.New(`Get "http://127.0.0.1:5380/api/zones/records/get": dial tcp 127.0.0.1:5380: connect: connection refused`), false},
+		{"unrelated network error", errors.New(`Post "http://127.0.0.1:5380/api/zones/records/get": dial tcp 127.0.0.1:5380: connect: connection refused`), false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

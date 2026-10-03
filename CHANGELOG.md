@@ -110,8 +110,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   form-encoded POST body instead of a GET query string. Record values, record `comments`,
   and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
   proxies and access logs record them; large blocked/allowed imports no longer risk the
-  server's request-line limit. Verified against Technitium 15.4 and 15.5.1, and with
-  `legacy_token_auth` against 14.3. (#147)
+  server's request-line limit. A reverse proxy or WAF must allow `POST` on `/api/*`, and
+  `server_url` must name the final scheme and host: a redirected `POST` is re-sent as a
+  bodyless `GET` and fails. See the Upgrading to v1.3 guide. Verified against Technitium
+  15.4 and 15.5.1, and with `legacy_token_auth` against 14.3. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same
   forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
   forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying
@@ -193,8 +195,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the same example keeps its own. (#116)
 - `technitium_blocked_zones` / `technitium_allowed_zones` data sources: the plain-text
   export they read now fails on a non-200 status, a Technitium JSON error envelope (for
-  example `invalid-token`), or an HTML page, instead of returning the response body as a
-  list of domains. (#123)
+  example `invalid-token`) or any other JSON body, or an HTML page, instead of returning the
+  response body as a list of domains. (#123)
 
 ### Security
 

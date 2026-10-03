@@ -724,7 +724,7 @@ func pingFailureDetail(serverURL string, err error, legacyTokenAuth bool) string
 		detail += "\n\nIf the token is valid and your Technitium DNS Server is older than 15.0, " +
 			"the server does not accept the Authorization: Bearer header this provider sends " +
 			"by default. Set legacy_token_auth = true in the provider block (or " +
-			"TECHNITIUM_LEGACY_TOKEN_AUTH=true) to send the token as a query parameter instead."
+			"TECHNITIUM_LEGACY_TOKEN_AUTH=true) to send the token as a query parameter or form field instead."
 	}
 	return detail
 }
