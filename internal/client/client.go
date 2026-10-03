@@ -182,7 +182,7 @@ func (c *Client) Login(ctx context.Context) error {
 		return fmt.Errorf("decoding login response JSON: %w", err)
 	}
 	if loginResp.Status != "ok" {
-		return &APIError{Status: loginResp.Status, ErrorMessage: loginResp.ErrorMessage}
+		return &APIError{Status: loginResp.Status, ErrorMessage: c.redactSecrets(loginResp.ErrorMessage)}
 	}
 	if loginResp.Token == "" {
 		return fmt.Errorf("login succeeded but no token was returned")
@@ -311,7 +311,14 @@ const maxErrorBodyBytes = 512
 // its URL-encoded forms -- before the body is truncated, so truncation can
 // never leave a partial credential behind.
 func (c *Client) errorBody(body []byte) string {
-	s := string(body)
+	s := c.redactSecrets(string(body))
+	if len(s) > maxErrorBodyBytes {
+		s = strings.ToValidUTF8(s[:maxErrorBodyBytes], "") + " [truncated]"
+	}
+	return s
+}
+
+func (c *Client) redactSecrets(s string) string {
 	for _, secret := range []string{c.token, c.password} {
 		if secret == "" {
 			continue
@@ -319,9 +326,6 @@ func (c *Client) errorBody(body []byte) string {
 		for _, form := range []string{secret, url.QueryEscape(secret), url.PathEscape(secret)} {
 			s = strings.ReplaceAll(s, form, "[REDACTED]")
 		}
-	}
-	if len(s) > maxErrorBodyBytes {
-		s = strings.ToValidUTF8(s[:maxErrorBodyBytes], "") + " [truncated]"
 	}
 	return s
 }
@@ -411,7 +415,7 @@ func (c *Client) parseResponse(resp *http.Response) (*APIResponse, error) {
 	if apiResp.Status != "ok" {
 		return nil, &APIError{
 			Status:       apiResp.Status,
-			ErrorMessage: apiResp.ErrorMessage,
+			ErrorMessage: c.redactSecrets(apiResp.ErrorMessage),
 		}
 	}
 

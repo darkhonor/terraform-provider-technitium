@@ -216,3 +216,19 @@ func TestExportFilteredZones_JSONOn200RedactsToken(t *testing.T) {
 		t.Errorf("token leaked into error: %v", err)
 	}
 }
+
+func TestExportFilteredZones_JSONArrayOrStringIsError(t *testing.T) {
+	for _, body := range []string{`["a.example.test"]`, `"error"`} {
+		t.Run(body, func(t *testing.T) {
+			srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprint(w, body)
+			})
+			defer srv.Close()
+			c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: "t"})
+			domains, err := c.BlockedZoneList(context.Background())
+			if err == nil {
+				t.Fatalf("expected error, got domains %v", domains)
+			}
+		})
+	}
+}

@@ -64,8 +64,10 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 	case '{':
 		var env APIResponse
 		if json.Unmarshal([]byte(text), &env) == nil && env.Status != "" && env.Status != "ok" {
-			return nil, &APIError{Status: env.Status, ErrorMessage: env.ErrorMessage}
+			return nil, &APIError{Status: env.Status, ErrorMessage: c.redactSecrets(env.ErrorMessage)}
 		}
+		return nil, fmt.Errorf("unexpected JSON response from %s: %s", path, c.errorBody(body))
+	case '[', '"':
 		return nil, fmt.Errorf("unexpected JSON response from %s: %s", path, c.errorBody(body))
 	case '<':
 		return nil, fmt.Errorf("unexpected HTML response from %s: %s", path, c.errorBody(body))

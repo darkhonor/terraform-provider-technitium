@@ -114,6 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `server_url` must name the final scheme and host: a redirected `POST` is re-sent as a
   bodyless `GET` and fails. See the Upgrading to v1.3 guide. Verified against Technitium
   15.4 and 15.5.1, and with `legacy_token_auth` against 14.3. (#147)
+- Client: an API error message that echoes the API token or login password is now redacted
+  before it reaches a Terraform diagnostic, as non-200 response bodies already were. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same
   forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
   forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying

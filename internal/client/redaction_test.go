@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -126,4 +127,54 @@ func TestLogin_NonOKBodyRedactsPassword(t *testing.T) {
 	if strings.Contains(err.Error(), secretPass) {
 		t.Errorf("error message leaks the password: %v", err)
 	}
+}
+
+func TestAPIErrorMessage_RedactsCredentials(t *testing.T) {
+	const token = "envelope-secret-token"
+	const pass = "envelope-secret-pass"
+	echo := func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		_, _ = fmt.Fprintf(w, `{"status":"error","errorMessage":"rejected %s / %s / %s"}`,
+			r.Form.Get("token"), r.Form.Get("pass"), url.QueryEscape(token))
+	}
+	cases := map[string]func(*Client) error{
+		"parseResponse": func(c *Client) error {
+			_, err := c.RecordGet(context.Background(), "h.example.test", "example.test")
+			return err
+		},
+		"export": func(c *Client) error {
+			_, err := c.BlockedZoneList(context.Background())
+			return err
+		},
+	}
+	for name, call := range cases {
+		t.Run(name, func(t *testing.T) {
+			srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+				_, _ = fmt.Fprintf(w, `{"status":"error","errorMessage":"rejected %s / %s"}`, token, url.QueryEscape(token))
+			})
+			defer srv.Close()
+			c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: token})
+			err := call(c)
+			var apiErr *APIError
+			if !errors.As(err, &apiErr) {
+				t.Fatalf("want *APIError, got %v", err)
+			}
+			if strings.Contains(err.Error(), token) || strings.Contains(err.Error(), url.QueryEscape(token)) {
+				t.Errorf("credential leaked: %v", err)
+			}
+		})
+	}
+	t.Run("login", func(t *testing.T) {
+		srv := newTestServer(t, echo)
+		defer srv.Close()
+		c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Username: "admin", Password: pass})
+		err := c.Login(context.Background())
+		var apiErr *APIError
+		if !errors.As(err, &apiErr) {
+			t.Fatalf("want *APIError, got %v", err)
+		}
+		if strings.Contains(err.Error(), pass) {
+			t.Errorf("password leaked: %v", err)
+		}
+	})
 }
