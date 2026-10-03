@@ -61,6 +61,8 @@ and call out STIG / NIST 800-53 implications when applicable.
 - [Terraform CLI](https://developer.hashicorp.com/terraform/install) (used by `terraform-plugin-testing`)
 - GNU Make
 
+The Technitium HTTP API is documented upstream in [`APIDOCS.md`](https://github.com/TechnitiumSoftware/DnsServer/blob/master/APIDOCS.md). Upstream docs have been wrong before, so check a path or parameter against a running server before relying on it.
+
 ### Clone and build
 
 ```bash
