@@ -13,13 +13,18 @@ import (
 	"testing"
 )
 
-func TestRequestCreationError_RedactsToken(t *testing.T) {
-	const secretToken = "super-secret-create-token"
-
-	c, err := NewClient(ClientConfig{BaseURL: "http://bad host", Token: secretToken, LegacyTokenAuth: true})
-	if err != nil {
-		t.Fatalf("NewClient: %v", err)
+func TestRequestCreationError_RedactsURL(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		c, err := NewClient(ClientConfig{BaseURL: "http://bad host", Token: "t", LegacyTokenAuth: legacy})
+		if err != nil {
+			t.Fatalf("NewClient: %v", err)
+		}
+		assertRequestCreationRedacted(t, c, legacy)
 	}
+}
+
+func assertRequestCreationRedacted(t *testing.T, c *Client, legacy bool) {
+	t.Helper()
 
 	calls := map[string]func() error{
 		"doGet": func() error {
@@ -41,9 +46,26 @@ func TestRequestCreationError_RedactsToken(t *testing.T) {
 			t.Errorf("%s: expected a request-creation error for an unparseable server URL", name)
 			continue
 		}
-		if strings.Contains(err.Error(), secretToken) {
-			t.Errorf("%s: error message leaks the API token: %v", name, err)
+		if strings.Contains(err.Error(), "bad host") {
+			t.Errorf("%s (legacy=%v): error message carries the unredacted URL: %v", name, legacy, err)
 		}
+	}
+}
+
+func TestDoGet_TransportErrorStripsQuery(t *testing.T) {
+	c, err := NewClient(ClientConfig{BaseURL: "http://127.0.0.1:1", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})}
+	_, err = c.doGet(context.Background(), "/api/zones/options/get", url.Values{"zone": {"QUERY-MARKER"}})
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), "QUERY-MARKER") {
+		t.Errorf("query string not stripped from transport error: %v", err)
 	}
 }
 
@@ -61,8 +83,6 @@ func TestLogin_RequestCreationError_RedactsURL(t *testing.T) {
 	}
 }
 
-// Reverse proxies and WAFs routinely echo the request URI or form body in
-// their error pages. In LegacyTokenAuth mode the form body carries the token.
 func TestParseResponse_NonOKBodyRedactsToken(t *testing.T) {
 	const secretToken = "super-secret/echo+token"
 

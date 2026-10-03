@@ -267,9 +267,10 @@ func redactURL(rawURL string) string {
 // http.Client.Do returns a *url.Error whose Error() method embeds the full
 // request URL verbatim, including the query string — so wrapping it
 // directly with %w would still render that URL whenever the resulting
-// error's Error() is later called. This rebuilds the message from a query-stripped URL and
-// wraps only the innermost cause, so errors.As-based classification (e.g.
-// ClassifyTLSError) keeps working against the unwrapped chain.
+// error's Error() is later called. This rebuilds the message from a
+// query-stripped URL and wraps only the innermost cause, so errors.As-based
+// classification (e.g. ClassifyTLSError) keeps working against the
+// unwrapped chain.
 func redactTransportErr(path string, err error) error {
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
