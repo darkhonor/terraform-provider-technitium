@@ -54,9 +54,8 @@ func (c *Client) ZoneSOAGet(ctx context.Context, zone string) (*SOARecord, error
 }
 
 // ZoneSOASetSerialDateScheme sets useSerialDateScheme on the zone's SOA
-// record. The update API requires the full SOA, clears an omitted comment and
-// bumps the serial on every call, so every field is sent as read and nothing
-// is sent when the value already matches or the server does not report it.
+// record. records/update clears omitted fields and bumps the serial on every
+// call: send every field as read, and skip the write when nothing changes.
 func (c *Client) ZoneSOASetSerialDateScheme(ctx context.Context, zone string, want bool) error {
 	soa, err := c.ZoneSOAGet(ctx, zone)
 	if err != nil {

@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -238,17 +239,40 @@ func TestZoneCreate_PrimaryNoSOAWriteWhenCreateFlagTookEffect(t *testing.T) {
 }
 
 func TestZoneCreate_LateFailurePersistsState(t *testing.T) {
-	f := newZoneSOAFake(t, "Forwarder", false)
-	f.failPath = "/api/zones/records/update"
-	resp := runZoneCreate(t, f.resource(t), soaFakeModel("Forwarder", types.BoolValue(true)))
-	if !resp.Diagnostics.HasError() {
-		t.Fatal("expected an error from the failed SOA update")
+	cases := []struct {
+		name     string
+		zoneType string
+		failPath string
+		mutate   func(*ZoneResourceModel)
+	}{
+		{"options", "Forwarder", "/api/zones/options/set", func(m *ZoneResourceModel) {
+			m.Notify = types.ListValueMust(types.StringType, []attr.Value{types.StringValue("192.0.2.10")})
+		}},
+		{"soa", "Forwarder", "/api/zones/records/update", func(*ZoneResourceModel) {}},
+		{"dnssec", "Primary", "/api/zones/dnssec/sign", func(m *ZoneResourceModel) {
+			m.DNSSEC = &DNSSECModel{
+				Enabled:              types.BoolValue(true),
+				Algorithm:            types.StringValue("ECDSA"),
+				Curve:                types.StringValue("P384"),
+				NxProof:              types.StringValue("NSEC3"),
+				ChangeAcknowledgment: types.StringNull(),
+			}
+		}},
 	}
-	if resp.State.Raw.IsNull() {
-		t.Fatal("zone exists on the server but was left out of state")
-	}
-	if stateScheme(t, resp.State).ValueBool() {
-		t.Fatal("persisted state must reflect the server (false)")
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newZoneSOAFake(t, c.zoneType, false)
+			f.failPath = c.failPath
+			plan := soaFakeModel(c.zoneType, types.BoolValue(true))
+			c.mutate(plan)
+			resp := runZoneCreate(t, f.resource(t), plan)
+			if !resp.Diagnostics.HasError() {
+				t.Fatalf("expected an error from the failed %s call", c.failPath)
+			}
+			if resp.State.Raw.IsNull() {
+				t.Fatal("zone exists on the server but was left out of state")
+			}
+		})
 	}
 }
 
@@ -265,7 +289,7 @@ func TestZoneUpdate_AppliesChangedScheme(t *testing.T) {
 	}
 }
 
-func TestZoneUpdate_UnchangedSchemeSendsNoSOAUpdate(t *testing.T) {
+func TestZoneUpdate_StaleStateConvergesServerToPlan(t *testing.T) {
 	f := newZoneSOAFake(t, "Primary", false)
 	resp := runZoneUpdate(t, f.resource(t),
 		soaFakeModel("Primary", types.BoolValue(true)),
@@ -273,11 +297,24 @@ func TestZoneUpdate_UnchangedSchemeSendsNoSOAUpdate(t *testing.T) {
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("Update: %v", resp.Diagnostics)
 	}
-	if f.soaUpdates != 0 {
-		t.Fatalf("SOA updates = %d with plan equal to prior state, want 0", f.soaUpdates)
+	if !f.scheme || f.soaUpdates != 1 {
+		t.Fatalf("server = %t after %d updates, want true after 1", f.scheme, f.soaUpdates)
 	}
-	if stateScheme(t, resp.State).ValueBool() {
-		t.Fatal("read-back must report the stale server value (false)")
+	if !stateScheme(t, resp.State).ValueBool() {
+		t.Fatal("state must equal the planned value (true)")
+	}
+}
+
+func TestZoneUpdate_MatchingServerSendsNoSOAUpdate(t *testing.T) {
+	f := newZoneSOAFake(t, "Primary", true)
+	resp := runZoneUpdate(t, f.resource(t),
+		soaFakeModel("Primary", types.BoolValue(false)),
+		soaFakeModel("Primary", types.BoolValue(true)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", resp.Diagnostics)
+	}
+	if f.soaUpdates != 0 {
+		t.Fatalf("SOA updates = %d with the server already at the planned value, want 0", f.soaUpdates)
 	}
 }
 

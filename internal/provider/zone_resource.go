@@ -108,7 +108,7 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"soa_serial_date_scheme": schema.BoolAttribute{
-				Description: "Use the date-based SOA serial scheme (YYYYMMDDnn). Read from the zone's SOA record. Applies to Primary and Forwarder zones; changing it updates the SOA record and increments the serial.",
+				Description: "Use the date-based SOA serial scheme (YYYYMMDDnn). Read from the zone's SOA record. Applies to Primary and Forwarder zones; changing it updates the SOA record and increments the serial. No effect on Secondary and Stub zones.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
@@ -263,7 +263,7 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		!plan.Type.IsUnknown() && !soaSchemeManaged(plan.Type.ValueString()) {
 		resp.Diagnostics.AddAttributeWarning(path.Root("soa_serial_date_scheme"),
 			"soa_serial_date_scheme has no effect on this zone type",
-			fmt.Sprintf("soa_serial_date_scheme applies only to Primary and Forwarder zones; a %s zone's SOA comes from its primary.", plan.Type.ValueString()))
+			fmt.Sprintf("soa_serial_date_scheme applies only to Primary and Forwarder zones, not %s.", plan.Type.ValueString()))
 	}
 
 	// NSS validation: when running in NSS mode with ECDSA, P256 is not allowed.
@@ -280,9 +280,7 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	// Issue #96: algorithm/curve pair validity is config-static — refuse at
-	// plan time on CREATES too (the gate below only runs on updates), so an
-	// invalid pair can never create a zone whose signing then fails, leaving
-	// an orphaned server-side zone with no state.
+	// plan time on CREATES too (the gate below only runs on updates).
 	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil &&
 		!plan.DNSSEC.Enabled.IsUnknown() && plan.DNSSEC.Enabled.ValueBool() &&
 		!plan.DNSSEC.Algorithm.IsUnknown() && !plan.DNSSEC.Curve.IsUnknown() &&
@@ -395,9 +393,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Issue #96: revalidate the algorithm/curve pair with RESOLVED values
 	// before the zone exists. The ModifyPlan check skips unknowns (values
-	// from another resource), so a pair that resolves invalid at apply must
-	// be refused HERE — after ZoneCreate a failed sign would orphan a
-	// server-side zone with no state.
+	// from another resource).
 	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() &&
 		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
 		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
@@ -583,8 +579,7 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
-	if soaSchemeManaged(plan.Type.ValueString()) && !plan.SOASerialDateScheme.IsUnknown() &&
-		!plan.SOASerialDateScheme.Equal(state.SOASerialDateScheme) {
+	if soaSchemeManaged(plan.Type.ValueString()) && !plan.SOASerialDateScheme.IsUnknown() {
 		if err := r.client.ZoneSOASetSerialDateScheme(ctx, plan.Name.ValueString(), plan.SOASerialDateScheme.ValueBool()); err != nil {
 			resp.Diagnostics.AddError("Error setting SOA serial date scheme", err.Error())
 			return
