@@ -97,7 +97,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Applying it updates the SOA record and increments the serial; switching to `true` moves the
   serial to the date form (it never decreases). See the upgrade guide. (#135)
 - `technitium_zone`: when a step after zone creation fails (zone options, the SOA serial scheme,
-  or DNSSEC signing), the zone is now saved to state as tainted and replaced on the next apply,
+  DNSSEC signing, or reading the zone back), the zone is now saved to state as tainted and replaced on the next apply,
   instead of being left on the server outside state, where the next apply failed because the
   zone already existed. (#135)
 - `technitium_record`: refresh no longer aborts when the record's parent

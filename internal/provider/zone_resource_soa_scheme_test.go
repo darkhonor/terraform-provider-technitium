@@ -276,6 +276,37 @@ func TestZoneCreate_LateFailurePersistsState(t *testing.T) {
 	}
 }
 
+func TestZoneCreate_ReadBackFailurePersistsState(t *testing.T) {
+	cases := []struct {
+		name     string
+		zoneType string
+		failPath string
+	}{
+		{"setter and recovery read", "Forwarder", "/api/zones/records/get"},
+		{"final read-back", "Secondary", "/api/zones/options/get"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f := newZoneSOAFake(t, c.zoneType, false)
+			f.failPath = c.failPath
+			resp := runZoneCreate(t, f.resource(t), soaFakeModel(c.zoneType, types.BoolValue(true)))
+			if !resp.Diagnostics.HasError() {
+				t.Fatalf("expected an error from the failed %s call", c.failPath)
+			}
+			if resp.State.Raw.IsNull() {
+				t.Fatal("zone exists on the server but was left out of state")
+			}
+			var m ZoneResourceModel
+			if d := resp.State.Get(context.Background(), &m); d.HasError() {
+				t.Fatalf("state.Get: %v", d)
+			}
+			if m.ID.ValueString() != soaFakeZone || m.Name.ValueString() != soaFakeZone {
+				t.Fatalf("persisted id/name = %v/%v, want %s", m.ID, m.Name, soaFakeZone)
+			}
+		})
+	}
+}
+
 func TestZoneUpdate_AppliesChangedScheme(t *testing.T) {
 	f := newZoneSOAFake(t, "Primary", false)
 	resp := runZoneUpdate(t, f.resource(t),

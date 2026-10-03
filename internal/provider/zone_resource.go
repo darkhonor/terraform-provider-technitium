@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -420,6 +421,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 		resp.Diagnostics.AddError(summary, err.Error())
 		if rerr := r.readZoneState(ctx, &plan); rerr != nil {
 			resp.Diagnostics.AddError("Error reading zone state", rerr.Error())
+			persistCreatedZone(ctx, req, domain, resp)
 			return
 		}
 		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -455,10 +457,28 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Read back state
 	if err := r.readZoneState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading zone state", err.Error())
+		persistCreatedZone(ctx, req, domain, resp)
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+// persistCreatedZone stores the plan, with unknown values nulled, for a zone
+// that exists on the server but could not be read back.
+func persistCreatedZone(ctx context.Context, req resource.CreateRequest, id string, resp *resource.CreateResponse) {
+	raw, err := tftypes.Transform(req.Plan.Raw, func(_ *tftypes.AttributePath, v tftypes.Value) (tftypes.Value, error) {
+		if !v.IsKnown() {
+			return tftypes.NewValue(v.Type(), nil), nil
+		}
+		return v, nil
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error saving the created zone to state", err.Error())
+		return
+	}
+	resp.State.Raw = raw
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }
 
 func (r *ZoneResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
