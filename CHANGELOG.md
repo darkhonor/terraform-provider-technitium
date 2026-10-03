@@ -89,6 +89,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   at apply. `forwarder_protocol` set without `forwarders` has no effect, and the plan now warns
   about it. State recorded with the server's form after a failed apply converges to the
   configured spelling on the next apply. (#134)
+- `technitium_zone`: `soa_serial_date_scheme` is now read from the zone's SOA record and applied
+  on update, so drift is visible and an existing zone's scheme can be changed. Forwarder zones
+  now get the scheme they were configured with. After upgrading, any Primary or Forwarder zone
+  whose server value differs from the configuration (the default is `true`) shows a one-time
+  change on the next plan; this includes every Forwarder zone created by an earlier version.
+  Applying it updates the SOA record, which switches the serial to the date form (it never
+  decreases). (#135)
 - `technitium_record`: refresh no longer aborts when the record's parent
   zone is gone ("No such zone was found"); the record is removed from state
   and planned for recreation (#88).

@@ -108,7 +108,7 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"soa_serial_date_scheme": schema.BoolAttribute{
-				Description: "Use date-based SOA serial numbering scheme.",
+				Description: "Use the date-based SOA serial scheme (YYYYMMDDnn). Read from the zone's SOA record. Applies to Primary and Forwarder zones; changing it updates the SOA record and increments the serial.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
