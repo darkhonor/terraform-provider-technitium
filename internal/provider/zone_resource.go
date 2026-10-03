@@ -257,6 +257,15 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		return
 	}
 
+	var cfgScheme types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("soa_serial_date_scheme"), &cfgScheme)...)
+	if !cfgScheme.IsNull() && !cfgScheme.IsUnknown() && !cfgScheme.ValueBool() &&
+		!plan.Type.IsUnknown() && !soaSchemeManaged(plan.Type.ValueString()) {
+		resp.Diagnostics.AddAttributeWarning(path.Root("soa_serial_date_scheme"),
+			"soa_serial_date_scheme has no effect on this zone type",
+			fmt.Sprintf("soa_serial_date_scheme applies only to Primary and Forwarder zones; a %s zone's SOA comes from its primary.", plan.Type.ValueString()))
+	}
+
 	// NSS validation: when running in NSS mode with ECDSA, P256 is not allowed.
 	// CNSSI 1253 requires P384 for higher security margin in classified environments.
 	if r.providerData != nil && r.providerData.NSS &&

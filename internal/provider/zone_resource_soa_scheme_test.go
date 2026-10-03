@@ -293,3 +293,41 @@ func TestZoneUpdate_SecondaryNeverWritesSOA(t *testing.T) {
 		t.Fatalf("SOA updates = %d on a Secondary zone, want 0", f.soaUpdates)
 	}
 }
+func runZoneModifyPlan(t *testing.T, r *ZoneResource, cfg *ZoneResourceModel) *resource.ModifyPlanResponse {
+	t.Helper()
+	s := zoneSchema(t, r)
+	st := tfsdk.State{Schema: s.Schema}
+	if d := st.Set(context.Background(), cfg); d.HasError() {
+		t.Fatalf("set: %v", d)
+	}
+	config := tfsdk.Config{Schema: s.Schema, Raw: st.Raw}
+	plan := tfsdk.Plan{Schema: s.Schema, Raw: st.Raw}
+	resp := &resource.ModifyPlanResponse{Plan: plan}
+	r.ModifyPlan(context.Background(), resource.ModifyPlanRequest{Config: config, Plan: plan, State: tfsdk.State{Schema: s.Schema}}, resp)
+	return resp
+}
+
+func TestZoneModifyPlan_WarnsOnUnmanagedExplicitFalse(t *testing.T) {
+	r := &ZoneResource{}
+	cases := []struct {
+		zoneType string
+		scheme   types.Bool
+		warn     bool
+	}{
+		{"Secondary", types.BoolValue(false), true},
+		{"Stub", types.BoolValue(false), true},
+		{"Secondary", types.BoolValue(true), false},
+		{"Stub", types.BoolNull(), false},
+		{"Primary", types.BoolValue(false), false},
+		{"Forwarder", types.BoolValue(false), false},
+	}
+	for _, c := range cases {
+		resp := runZoneModifyPlan(t, r, soaFakeModel(c.zoneType, c.scheme))
+		if resp.Diagnostics.HasError() {
+			t.Fatalf("%s/%v: %v", c.zoneType, c.scheme, resp.Diagnostics)
+		}
+		if got := resp.Diagnostics.WarningsCount() > 0; got != c.warn {
+			t.Errorf("%s/%v: warning = %t, want %t", c.zoneType, c.scheme, got, c.warn)
+		}
+	}
+}
