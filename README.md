@@ -258,7 +258,7 @@ the [DISA STIG Library](https://www.cyber.mil/stigs).
 The acceptance suite runs against Technitium **15.5.1**. Servers older than 15.0 are not
 covered by it.
 
-> **Upgrading to v1.3?** Four things can stop an existing configuration from applying:
+> **Upgrading to v1.3?** Check these before upgrading:
 >
 > - **Technitium older than 15.0:** the provider now sends the API token as an
 >   `Authorization: Bearer` header, which older servers ignore. Set
@@ -271,6 +271,8 @@ covered by it.
 >   redirect only within the same scheme, host, and port, and sends writes as `POST` form
 >   bodies. Set `server_url` to the final address; see
 >   [Reverse Proxies and Load Balancers](docs/guides/reverse-proxy.md).
+> - **`stig_compliance` with `strict` enforcement (the default):** unsigning a zone now requires
+>   `dnssec.change_acknowledgment = "unsigned"`.
 > - **Upgrading Technitium to 15.5 or later:** a forwarder zone whose forwarder has
 >   `dnssec_validation = false` becomes a Negative Trust Anchor (DNSSEC validation off for
 >   that namespace), and the record's comment is returned to any client that queries it.
