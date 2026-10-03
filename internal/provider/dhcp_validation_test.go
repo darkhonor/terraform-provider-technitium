@@ -75,6 +75,65 @@ resource "technitium_dhcp_scope" "bad" {
 	})
 }
 
+func TestAccDHCPScopeResource_zeroSubnetMask_Rejected(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderHCL() + `
+resource "technitium_dhcp_scope" "bad" {
+  name             = "acc-bad-zero-mask"
+  starting_address = "10.50.0.50"
+  ending_address   = "10.50.0.250"
+  subnet_mask      = "0.0.0.0"
+}
+`,
+				ExpectError: regexp.MustCompile(`not a usable subnet mask`),
+			},
+		},
+	})
+}
+
+func TestAccDHCPScopeResource_mappedIPv6Address_Rejected(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderHCL() + `
+resource "technitium_dhcp_scope" "bad" {
+  name             = "acc-bad-mapped"
+  starting_address = "::ffff:10.50.0.50"
+  ending_address   = "10.50.0.250"
+  subnet_mask      = "255.255.255.0"
+}
+`,
+				ExpectError: regexp.MustCompile(`not a valid IPv4 address`),
+			},
+		},
+	})
+}
+
+func TestAccDHCPScopeResource_invalidServerListEntry_Rejected(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderHCL() + `
+resource "technitium_dhcp_scope" "bad" {
+  name             = "acc-bad-dns-list"
+  starting_address = "10.50.0.50"
+  ending_address   = "10.50.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  dns_servers = ["10.50.0.5", "not-an-ip"]
+}
+`,
+				ExpectError: regexp.MustCompile(`not a valid IPv4 address`),
+			},
+		},
+	})
+}
+
 // The scopes/set wire encoding joins fields with "|"; a literal pipe in any
 // free-text field would shift every later field, so it is rejected at plan time.
 func TestAccDHCPScopeResource_pipeInFields_Rejected(t *testing.T) {

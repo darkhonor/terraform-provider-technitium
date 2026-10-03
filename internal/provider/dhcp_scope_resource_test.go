@@ -115,13 +115,8 @@ func TestAccDHCPScopeResource_rename(t *testing.T) {
 	})
 }
 
-// Regression test: a scope update must not wipe standalone
-// technitium_dhcp_reserved_lease reservations on that scope. Before the fix,
-// DHCPScopeSet always sent reservedLeases (empty when the scope declared no
-// inline reserved_leases) and the server treats it as the full replacement
-// list, so the second step's scope update deleted the reservation server-side.
-// The framework's post-apply empty-plan check then fails the step: the
-// reserved lease's refresh finds it gone and plans a re-create.
+// A scope update must not wipe standalone technitium_dhcp_reserved_lease
+// reservations on that scope.
 func TestAccDHCPScopeResource_updatePreservesStandaloneLease(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

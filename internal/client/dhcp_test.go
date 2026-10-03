@@ -178,11 +178,8 @@ func TestDHCPScopeSet_WireFormat(t *testing.T) {
 	}
 }
 
-// The reservedLeases parameter is exempt from the always-send clearing
-// contract: the same server-side list is managed by the standalone
-// reserved-lease endpoints, and Technitium keeps the current list when the
-// parameter is omitted. nil must omit; a non-nil empty slice must send the
-// parameter (empty clears).
+// nil ReservedLeases must omit the parameter (the server keeps its list); a
+// non-nil empty slice must send it (empty clears).
 func TestDHCPScopeSet_ReservedLeasesNilOmitsParam(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.PostForm == nil {

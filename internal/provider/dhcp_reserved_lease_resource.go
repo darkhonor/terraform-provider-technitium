@@ -72,6 +72,9 @@ func (r *DHCPReservedLeaseResource) Schema(_ context.Context, _ resource.SchemaR
 				Description: "Client MAC address (e.g. 00-11-22-33-44-55).",
 				Required:    true,
 				PlanModifiers: []planmodifier.String{
+					// Order matters: a semantically-equal respelling is folded
+					// into the state value before RequiresReplace compares.
+					macRespellingKeepsState{},
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
@@ -197,9 +200,8 @@ func (r *DHCPReservedLeaseResource) Delete(ctx context.Context, req resource.Del
 }
 
 func (r *DHCPReservedLeaseResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// ID format: <scope>::<hardware address>
-	scope, mac, ok := strings.Cut(req.ID, "::")
-	if !ok || scope == "" || mac == "" {
+	scope, mac, ok := parseDHCPReservedLeaseID(req.ID)
+	if !ok {
 		resp.Diagnostics.AddError("Invalid import ID",
 			fmt.Sprintf("Expected import ID in the form \"<scope>::<hardware address>\", got: %q", req.ID))
 		return
@@ -207,6 +209,40 @@ func (r *DHCPReservedLeaseResource) ImportState(ctx context.Context, req resourc
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), req.ID)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("scope"), scope)...)
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("hardware_address"), mac)...)
+}
+
+// parseDHCPReservedLeaseID splits a <scope>::<hardware address> composite ID
+// on its last "::" so scope names containing "::" survive; a MAC's colons
+// only ever come one at a time.
+func parseDHCPReservedLeaseID(id string) (scope, mac string, ok bool) {
+	idx := strings.LastIndex(id, "::")
+	if idx < 1 || idx+2 >= len(id) {
+		return "", "", false
+	}
+	return id[:idx], id[idx+2:], true
+}
+
+// macRespellingKeepsState plans the prior state's MAC when the configured
+// value is the same address in a different spelling (case or -/: separators),
+// so a respelling — common after import — does not force a replace. A
+// genuinely different MAC still does.
+type macRespellingKeepsState struct{}
+
+func (macRespellingKeepsState) Description(context.Context) string {
+	return "equivalent MAC spellings do not force a replace"
+}
+
+func (macRespellingKeepsState) MarkdownDescription(ctx context.Context) string {
+	return macRespellingKeepsState{}.Description(ctx)
+}
+
+func (macRespellingKeepsState) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	if req.StateValue.IsNull() || req.PlanValue.IsNull() || req.PlanValue.IsUnknown() {
+		return
+	}
+	if macEqual(req.StateValue.ValueString(), req.PlanValue.ValueString()) {
+		resp.PlanValue = req.StateValue
+	}
 }
 
 // dhcpReservedLeaseID builds the composite resource ID.

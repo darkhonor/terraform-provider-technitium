@@ -3,12 +3,12 @@
 page_title: "technitium_dhcp_scope Resource - terraform-provider-technitium"
 subcategory: ""
 description: |-
-  Manages a Technitium DHCP scope. The DHCP server allocates leases from the scope's address range once the scope is enabled. Note: enabling a scope requires the Technitium host to have a network interface with a static IP address inside the scope's subnet.
+  Manages a Technitium DHCP scope. The DHCP server allocates leases from the scope's address range once the scope is enabled. Note: enabling a scope requires the Technitium host to have a network interface with a static IP address inside the scope's subnet. Terraform owns the scope's list attributes (dns_servers, exclusions, static_routes, and so on, with the exception of reserved_leases): they are sent in full on every apply, so values added outside Terraform are not reported as drift and are overwritten — or cleared, when the attribute is unset — by the next apply.
 ---
 
 # technitium_dhcp_scope (Resource)
 
-Manages a Technitium DHCP scope. The DHCP server allocates leases from the scope's address range once the scope is enabled. Note: enabling a scope requires the Technitium host to have a network interface with a static IP address inside the scope's subnet.
+Manages a Technitium DHCP scope. The DHCP server allocates leases from the scope's address range once the scope is enabled. Note: enabling a scope requires the Technitium host to have a network interface with a static IP address inside the scope's subnet. Terraform owns the scope's list attributes (dns_servers, exclusions, static_routes, and so on, with the exception of reserved_leases): they are sent in full on every apply, so values added outside Terraform are not reported as drift and are overwritten — or cleared, when the attribute is unset — by the next apply.
 
 ## Example Usage
 

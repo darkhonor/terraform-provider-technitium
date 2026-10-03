@@ -120,7 +120,11 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 	resp.Schema = schema.Schema{
 		Description: "Manages a Technitium DHCP scope. The DHCP server allocates leases from the " +
 			"scope's address range once the scope is enabled. Note: enabling a scope requires the " +
-			"Technitium host to have a network interface with a static IP address inside the scope's subnet.",
+			"Technitium host to have a network interface with a static IP address inside the scope's subnet. " +
+			"Terraform owns the scope's list attributes (dns_servers, exclusions, static_routes, and so on, " +
+			"with the exception of reserved_leases): they are sent in full on every apply, so values added " +
+			"outside Terraform are not reported as drift and are overwritten — or cleared, when the " +
+			"attribute is unset — by the next apply.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Scope identifier (same as scope name).",
@@ -459,19 +463,34 @@ func (r *DHCPScopeResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
+	wantEnabled := plan.Enabled.ValueBool()
+
 	if err := r.client.DHCPScopeSet(ctx, scope, ""); err != nil {
 		resp.Diagnostics.AddError("Error creating DHCP scope", err.Error())
 		return
 	}
 
+	// The scope exists on the server from here on. Persist state before any
+	// further call so a later failure surfaces on a resource Terraform
+	// tracks, rather than orphaning a live scope that the next apply refuses
+	// to adopt.
+	r.readBack(ctx, name, &plan, &resp.Diagnostics)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
 	// The server may auto-enable a newly created scope (when a matching
 	// interface exists); reconcile to the planned state either way.
-	if err := r.reconcileEnabled(ctx, plan.Name.ValueString(), plan.Enabled.ValueBool()); err != nil {
+	if err := r.reconcileEnabled(ctx, name, wantEnabled); err != nil {
 		resp.Diagnostics.AddError("Error setting DHCP scope enabled state", err.Error())
 		return
 	}
 
-	r.readBack(ctx, plan.Name.ValueString(), &plan, &resp.Diagnostics)
+	r.readBack(ctx, name, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -533,6 +552,18 @@ func (r *DHCPScopeResource) Update(ctx context.Context, req resource.UpdateReque
 	if err := r.client.DHCPScopeSet(ctx, scope, newName); err != nil {
 		resp.Diagnostics.AddError("Error updating DHCP scope", err.Error())
 		return
+	}
+
+	// The scope now answers to the planned name. Persist it before any
+	// further call: if one fails, state must not keep a name the server no
+	// longer knows, or the next refresh drops the resource.
+	if newName != "" {
+		state.Name = plan.Name
+		state.ID = plan.Name
+		resp.Diagnostics.Append(resp.State.Set(ctx, &state)...)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	effectiveName := plan.Name.ValueString()

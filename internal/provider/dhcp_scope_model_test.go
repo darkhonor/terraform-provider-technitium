@@ -12,10 +12,8 @@ import (
 )
 
 // scopeFromModel must preserve the nil/empty distinction of reserved_leases:
-// nil (attribute absent from config) makes DHCPScopeSet omit the
-// reservedLeases parameter so standalone technitium_dhcp_reserved_lease
-// reservations survive scope updates; a declared list — including an empty
-// one — must map to a non-nil slice so the parameter is sent and overwrites.
+// nil omits the reservedLeases parameter, a declared list — even an empty
+// one — sends it.
 func TestDHCPScopeFromModel_ReservedLeasesNilVsEmpty(t *testing.T) {
 	r := &DHCPScopeResource{}
 	ctx := context.Background()

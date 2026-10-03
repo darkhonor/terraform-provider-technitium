@@ -44,6 +44,12 @@ func (r *DHCPScopeResource) ValidateConfig(ctx context.Context, req resource.Val
 	end := validateIPv4Attr(config.EndingAddress, path.Root("ending_address"), &resp.Diagnostics)
 	validateSubnetMaskAttr(config.SubnetMask, path.Root("subnet_mask"), &resp.Diagnostics)
 
+	validateIPv4ListAttr(ctx, config.DNSServers, path.Root("dns_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.WINSServers, path.Root("wins_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.NTPServers, path.Root("ntp_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.CAPWAPAcIPAddresses, path.Root("capwap_ac_ip_addresses"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.TFTPServerAddresses, path.Root("tftp_server_addresses"), &resp.Diagnostics)
+
 	if start != nil && end != nil && ipv4ToUint(start) > ipv4ToUint(end) {
 		resp.Diagnostics.AddAttributeError(path.Root("starting_address"),
 			"Invalid scope range",
@@ -126,14 +132,16 @@ func validateNoPipeAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
 	}
 }
 
-// validateIPv4Attr parses a types.String as an IPv4 address, appending a
-// diagnostic on failure. Returns nil for null/unknown/invalid values.
+// validateIPv4Attr parses a types.String as an IPv4 address in dotted-quad
+// notation, appending a diagnostic on failure. IPv6 spellings of IPv4
+// addresses (::ffff:a.b.c.d) are rejected: the wire format is dotted-quad.
+// Returns nil for null/unknown/invalid values.
 func validateIPv4Attr(v types.String, p path.Path, diags *diag.Diagnostics) net.IP {
 	if v.IsNull() || v.IsUnknown() {
 		return nil
 	}
 	ip := net.ParseIP(v.ValueString())
-	if ip == nil || ip.To4() == nil {
+	if ip == nil || ip.To4() == nil || strings.Contains(v.ValueString(), ":") {
 		diags.AddAttributeError(p, "Invalid IPv4 address",
 			fmt.Sprintf("%q is not a valid IPv4 address.", v.ValueString()))
 		return nil
@@ -141,21 +149,39 @@ func validateIPv4Attr(v types.String, p path.Path, diags *diag.Diagnostics) net.
 	return ip.To4()
 }
 
-// validateSubnetMaskAttr parses a types.String as a contiguous IPv4 netmask.
+// validateIPv4ListAttr validates every element of a list of IPv4 addresses.
+func validateIPv4ListAttr(ctx context.Context, list types.List, p path.Path, diags *diag.Diagnostics) {
+	if list.IsNull() || list.IsUnknown() {
+		return
+	}
+	var elems []types.String
+	diags.Append(list.ElementsAs(ctx, &elems, false)...)
+	for i, e := range elems {
+		validateIPv4Attr(e, p.AtListIndex(i), diags)
+	}
+}
+
+// validateSubnetMaskAttr parses a types.String as a contiguous, non-zero IPv4 netmask.
 func validateSubnetMaskAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
 	if v.IsNull() || v.IsUnknown() {
 		return
 	}
 	ip := net.ParseIP(v.ValueString())
-	if ip == nil || ip.To4() == nil {
+	if ip == nil || ip.To4() == nil || strings.Contains(v.ValueString(), ":") {
 		diags.AddAttributeError(p, "Invalid subnet mask",
 			fmt.Sprintf("%q is not a valid IPv4 subnet mask.", v.ValueString()))
 		return
 	}
 	mask := net.IPMask(ip.To4())
-	if ones, bits := mask.Size(); ones == 0 && bits == 0 {
+	ones, bits := mask.Size()
+	if ones == 0 && bits == 0 {
 		diags.AddAttributeError(p, "Invalid subnet mask",
 			fmt.Sprintf("%q is not a contiguous IPv4 subnet mask.", v.ValueString()))
+		return
+	}
+	if ones == 0 {
+		diags.AddAttributeError(p, "Invalid subnet mask",
+			"\"0.0.0.0\" is not a usable subnet mask.")
 	}
 }
 
