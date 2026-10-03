@@ -14,7 +14,9 @@ how it fails. This guide lists what the proxy must allow and how each mistake sh
 
 ## What the provider sends
 
-Every request goes to a path under `/api/`, on the scheme, host, and port named by `server_url`.
+Every provider request goes to a path under `/api/`, on the scheme, host, and port named by
+`server_url`. `technitium_cluster_secondary` also opens its own connection to `node_url`; see
+[Cluster secondary nodes](#cluster-secondary-nodes).
 
 | | Default (`Authorization: Bearer`) | `legacy_token_auth = true` |
 |---|---|---|
@@ -22,35 +24,44 @@ Every request goes to a path under `/api/`, on the scheme, host, and port named 
 | Writes | `POST`, form body (`application/x-www-form-urlencoded`) | `POST`, form body |
 | API token | `Authorization` header | `token` field in the form body |
 | Blocked/allowed list export | `GET`, plain-text response | `POST`, plain-text response |
+| Session login (`username`/`password` instead of `api_token`) | `POST /api/user/login`, credentials in the form body | same |
 
-Request timeout is 30 seconds. Form bodies can be large: a blocked or allowed zone import sends
+The request timeout for `server_url` is 30 seconds. Form bodies can be large: a blocked or allowed zone import sends
 the whole list in one request (about 1.7 MB for 60,000 domains).
 
 ## Proxy checklist
 
 | The proxy must | If it does not, the provider reports |
 |---|---|
-| Allow `GET` and `POST` on `/api/*` | `unexpected HTTP status 403` on writes (default mode) or on every request (`legacy_token_auth`) |
+| Allow `GET` and `POST` on `/api/*` | `unexpected HTTP status 403` on writes and session login (default mode), or on every request (`legacy_token_auth`) |
 | Pass the `Authorization` header to Technitium unchanged | `technitium API error (status=invalid-token)` (default mode) |
 | Accept request bodies large enough for your largest list import | `unexpected HTTP status 413` on import |
-| Allow upstream reads and writes to take at least 30 seconds | `unexpected HTTP status 504` or a timeout |
-| Offer TLS 1.3, or the provider sets `tls_min_version = "1.2"` | `tls: protocol version not supported` (shown as "TLS 1.3 not supported by the server") |
-| Route on the host name in `server_url` and serve a certificate for it | `unexpected HTTP status 404`, or a certificate error |
+| Allow upstream requests to take at least as long as the provider waits (30 seconds; 300 for a cluster join) | `Client.Timeout exceeded`, or an HTTP 504 from the proxy |
+| Offer TLS 1.3 | "TLS 1.3 not supported by the server" |
+| Route on the host name in `server_url` and serve a certificate for it | "server certificate signed by unknown authority" (the proxy's default certificate), or `unexpected HTTP status 404` |
 
 Also:
 
 * **Do not log the `Authorization` header or request bodies.** They carry the API token, record
-  values, comments, and secrets such as `proxy_password`. The default access-log formats of
-  nginx and Traefik log neither.
+  values, comments, and secrets such as `proxy_password` and cluster join credentials. The
+  default access-log formats of nginx and Traefik log neither; check WAF audit logs, which often
+  record both.
 * **WAF rules may block DNS data.** TXT values (SPF, DKIM, DMARC), CAA values, and free-text
-  comments can match generic injection rules. A blocked request appears as an HTTP 403. Exempt
+  comments can match generic injection rules. A blocked request usually appears as an HTTP 403. Exempt
   `/api/` from body inspection, or tune the rule, rather than changing the record.
 * **Authentication middleware** (forward-auth, basic auth) that reads or replaces the
   `Authorization` header breaks default-mode authentication. Put it on other paths or hosts.
+  On Technitium 15.0 or later, fix the proxy rather than setting `legacy_token_auth`: that would
+  move the token into request bodies, where WAF inspection and audit logs see it.
 * **Trust the proxy's certificate.** If it is issued by a private CA, point `ca_cert_file` or
-  `ca_cert_dir` at that CA. If `server_url` uses an IP address or a name the certificate does
-  not cover, set `tls_server_name` to the certificate's name. Avoid `skip_tls_verify` outside
-  testing.
+  `ca_cert_dir` at that CA. Avoid `skip_tls_verify` outside testing.
+* **Use the routed host name in `server_url`.** `tls_server_name` changes only the name used for
+  TLS (SNI and certificate checks), not the HTTP `Host` header. A proxy that routes by host name
+  (a Traefik `Host()` rule, several nginx `server_name` blocks) needs `server_url` to carry that
+  name; an IP address in `server_url` reaches the default route or certificate.
+* **Keep TLS 1.3.** The provider requires TLS 1.3 by default. `tls_min_version = "1.2"` is
+  reported by DNS-REQ-028 when `stig_compliance` is enabled and is refused when `nss = true`; see
+  the [STIG compliance guide](stig-compliance.md). Enable TLS 1.3 on the proxy instead.
 
 ## Redirects
 
@@ -74,20 +85,23 @@ Refusing these keeps the API token, and the TLS settings you configured, on the 
 `server_url` names. A redirect that changes `http://` to `https://` would otherwise connect
 without your `tls_min_version`, `ca_cert_file`, or `skip_tls_verify` settings.
 
-Host names are compared as written: `dns.example.test.` (trailing dot) and `dns.example.test`
+Host names are compared case-insensitively but otherwise as written: `dns.example.test.` (trailing dot) and `dns.example.test`
 are different hosts, and so are two spellings of the same IP address. An omitted port equals
 the scheme's default, so `https://dns.example.test` and `https://dns.example.test:443` match.
 
-A same-origin 301, 302, or 303 re-sends a write as a `GET` without its body. Most writes then fail
-with `Parameter '...' missing.`; a write that takes no parameters, such as flushing the blocked
-or allowed list, can run as a `GET`. Avoid these redirects on `/api/`.
+A same-origin 301, 302, or 303 re-sends a `POST` as a `GET` without its body. In default mode
+most writes then fail with `Parameter '...' missing.`, and a write that takes no parameters,
+such as flushing the blocked or allowed list, can run as a `GET`. With `legacy_token_auth` the
+token was in that body, so every request fails with `status=invalid-token`. Avoid these
+redirects on `/api/`.
 
 ## Error pages
 
 When the proxy answers instead of Technitium, the provider reports the HTTP status and the first
 512 bytes of the page, with the API token, login password, and any secret sent in that request
-replaced by `[REDACTED]`. A blocked or allowed list read never turns an error page into a list
-of domains: an HTML page, a JSON body, or a non-200 status is an error.
+replaced by `[REDACTED]`. A blocked or allowed list read treats a non-200 status, or a body
+that starts as HTML or JSON, as an error rather than a list of domains. A block page served as
+`200 text/plain` is not detected, so configure the proxy to return an error status.
 
 ## Example: nginx
 
@@ -102,7 +116,6 @@ server {
     ssl_certificate_key /etc/nginx/tls/key.pem;
     ssl_protocols       TLSv1.3;
 
-    # Blocked/allowed list imports send the whole list in one form body.
     client_max_body_size 16m;
 
     location /api/ {
@@ -115,7 +128,9 @@ server {
 ```
 
 nginx passes the `Authorization` header through by default. Its default
-`client_max_body_size` is 1 MB, which a large list import exceeds.
+`client_max_body_size` is 1 MB, which a large blocked or allowed list import exceeds. The two
+60-second timeouts are nginx's defaults, shown because a cluster join can need up to
+`join_timeout_seconds` (300 by default).
 
 ## Example: Traefik
 
@@ -154,8 +169,8 @@ tls:
       minVersion: VersionTLS13
 ```
 
-The `Host()` rule means `server_url` must use `dns.example.test`. A request to the proxy's IP
-address gets a 404 and Traefik's default certificate.
+The `Host()` rule means `server_url` must use `dns.example.test`. Addressed by IP, Traefik
+serves its default certificate, which the provider rejects as signed by an unknown authority.
 
 Provider configuration for either example:
 
@@ -171,18 +186,34 @@ Both examples were tested with nginx `stable-alpine` and Traefik v3.5 in front o
 DNS Server 15.5.1, in default and `legacy_token_auth` modes, including a 60,000-domain blocked
 list import.
 
+## Cluster secondary nodes
+
+`technitium_cluster_secondary` connects to the secondary node at `node_url`, separately from
+`server_url`. That connection:
+
+* waits up to `join_timeout_seconds` (default 300) instead of 30 seconds, so a proxy in front of
+  the secondary needs an upstream timeout at least that long;
+* requires TLS 1.3 and trusts the system certificate store, or skips verification with
+  `node_skip_tls_verify`. The provider's `ca_cert_file`, `ca_cert_dir`, `tls_server_name`, and
+  `tls_min_version` do not apply to it;
+* sends the primary node's credentials (`primary_node_password`, and a TOTP code when set) in the
+  join request body;
+* follows the same redirect rules: `node_url` must be the final address.
+
 ## Troubleshooting
 
 | Symptom | Likely cause |
 |---|---|
 | `refusing redirect from ... to ...` | `server_url` is not the final address; use the `https://` URL the proxy serves. |
-| `technitium API error (status=invalid-token)` with a valid token | The proxy strips or replaces `Authorization`, or Technitium is older than 15.0 (set `legacy_token_auth = true`). |
+| `technitium API error (status=invalid-token)` with a valid token | The proxy strips or replaces `Authorization` (fix the proxy), or Technitium is older than 15.0 (set `legacy_token_auth = true`). With `legacy_token_auth`, a same-origin 301/302/303 also causes it. |
 | `unexpected HTTP status 413` | The proxy's request body limit is below the size of the list import. |
 | `unexpected HTTP status 403` | A WAF or method rule blocks `POST` or the request body. |
+| `unexpected HTTP status 403 on login` | Session login (`username`/`password`) is a `POST`; allow it on `/api/user/login`. |
 | `unexpected HTTP status 404` | The proxy did not match the host or path; check that `server_url` uses the routed host name and `/api/` reaches Technitium. |
 | `unexpected HTTP status 502` or `504` | The proxy cannot reach Technitium, or its upstream timeout is shorter than the request. |
-| `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2; enable TLS 1.3 or set `tls_min_version = "1.2"`. |
-| Certificate signed by unknown authority | Set `ca_cert_file` or `ca_cert_dir` to the CA that issued the proxy certificate. |
-| `Parameter '...' missing.` on writes | A same-host 301/302/303 dropped the request body. |
+| `Client.Timeout exceeded` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for a cluster join). |
+| `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2 (enable TLS 1.3), or `server_url` uses `https://` against a plain-HTTP port. |
+| Certificate signed by unknown authority | The proxy certificate is from a private CA (set `ca_cert_file` or `ca_cert_dir`), or `server_url` uses an IP address and gets the proxy's default certificate (use the routed host name). |
+| `Parameter '...' missing.` on writes | A same-origin 301/302/303 dropped the request body. |
 
 See also [Upgrading to v1.3](upgrading-to-v1.3.md) for the transport changes behind these rules.
