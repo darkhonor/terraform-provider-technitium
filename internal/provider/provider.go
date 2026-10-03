@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
@@ -399,7 +398,7 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	// Session-token authentication when no API token is configured
 	if apiToken == "" {
 		if err := apiClient.Login(ctx); err != nil {
-			isHTTPS := strings.HasPrefix(serverURL, "https://")
+			isHTTPS := client.IsHTTPSURL(serverURL)
 			if isHTTPS {
 				tlsErr := client.ClassifyTLSError(err)
 				if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
@@ -408,14 +407,14 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 				}
 			}
 			resp.Diagnostics.AddError("Unable to log in to Technitium server",
-				fmt.Sprintf("Login to %s as %q failed: %s", serverURL, username, err.Error()))
+				fmt.Sprintf("Login to %s as %q failed: %s", client.RedactURL(serverURL), username, err.Error()))
 			return
 		}
 	}
 
 	// Verify connectivity with tiered TLS error diagnostics
 	if err := apiClient.Ping(ctx); err != nil {
-		isHTTPS := strings.HasPrefix(serverURL, "https://")
+		isHTTPS := client.IsHTTPSURL(serverURL)
 		if isHTTPS {
 			tlsErr := client.ClassifyTLSError(err)
 			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
@@ -604,6 +603,7 @@ func validateEnforcement(enforcement string) diag.Diagnostics {
 // Returns an empty string when the error is not TLS-related (caller falls
 // through to the generic connectivity error).
 func buildTLSDiagnostic(tlsErr client.TLSError, serverURL string, stigEnabled, nss bool) string {
+	serverURL = client.RedactURL(serverURL)
 	switch tlsErr.Kind {
 	case client.TLSErrVersionMismatch:
 		msg := fmt.Sprintf("Connection to %s failed: TLS 1.3 not supported by the server.", serverURL)
@@ -718,7 +718,7 @@ var _ validators.ConfigAccessor = &providerConfigAccessor{}
 // unauthenticated and fails as invalid-token. That error alone reads as a bad
 // token; the hint names the one-line fix.
 func pingFailureDetail(serverURL string, err error, legacyTokenAuth bool) string {
-	detail := fmt.Sprintf("Ping to %s failed: %s", serverURL, err.Error())
+	detail := fmt.Sprintf("Ping to %s failed: %s", client.RedactURL(serverURL), err.Error())
 	var apiErr *client.APIError
 	if !legacyTokenAuth && errors.As(err, &apiErr) && apiErr.IsInvalidToken() {
 		detail += "\n\nIf the token is valid and your Technitium DNS Server is older than 15.0, " +

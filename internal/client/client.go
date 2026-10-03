@@ -89,7 +89,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 	}
 
 	transport := &http.Transport{}
-	isHTTPS := strings.HasPrefix(cfg.BaseURL, "https://")
+	isHTTPS := IsHTTPSURL(cfg.BaseURL)
 
 	if isHTTPS {
 		tlsConfig := &tls.Config{} //nolint:gosec // MinVersion set below
@@ -129,8 +129,9 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		password:        cfg.Password,
 		legacyTokenAuth: cfg.LegacyTokenAuth,
 		httpClient: &http.Client{
-			Timeout:   time.Duration(cfg.TimeoutSeconds) * time.Second,
-			Transport: transport,
+			Timeout:       time.Duration(cfg.TimeoutSeconds) * time.Second,
+			Transport:     transport,
+			CheckRedirect: checkRedirect,
 		},
 	}, nil
 }
@@ -251,14 +252,26 @@ func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// redactURL returns rawURL with its query string stripped, or a fixed
-// placeholder if rawURL does not parse.
+// IsHTTPSURL reports whether rawURL uses the https scheme, in any case.
+func IsHTTPSURL(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	return err == nil && strings.EqualFold(u.Scheme, "https")
+}
+
+// RedactURL returns rawURL without userinfo, query string, or fragment, or a
+// fixed placeholder if rawURL does not parse.
+func RedactURL(rawURL string) string {
+	return redactURL(rawURL)
+}
+
 func redactURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
 		return "[redacted URL]"
 	}
+	u.User = nil
 	u.RawQuery = ""
+	u.Fragment = ""
 	return u.String()
 }
 
@@ -417,4 +430,18 @@ func (c *Client) Ping(ctx context.Context) error {
 		_, err = c.doGet(ctx, "/api/settings/get", nil)
 	}
 	return err
+}
+
+// checkRedirect follows a redirect only when it keeps the original request's
+// scheme and hostname (#124).
+func checkRedirect(req *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	orig := via[0].URL
+	if req.URL.Scheme != orig.Scheme || !strings.EqualFold(req.URL.Hostname(), orig.Hostname()) {
+		return fmt.Errorf("refusing redirect from %s to %s: set server_url to the final address",
+			redactURL(orig.String()), redactURL(req.URL.String()))
+	}
+	return nil
 }

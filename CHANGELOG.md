@@ -49,6 +49,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field instead; the provider's
   "Unable to connect" diagnostic now says so when it sees that failure under the default auth
   mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
+- **Breaking: redirects.** The provider follows a redirect only when the scheme and host stay the
+  same. A `server_url` that relied on an `http://` to `https://` redirect, including Technitium's
+  own `web_service_http_to_tls_redirect`, now fails at provider configuration with "refusing
+  redirect from ... to ...". Set `server_url` to the final `https://` address; the TLS settings
+  (`tls_min_version`, `ca_cert_file`, `skip_tls_verify`) were never applied on that redirected hop.
+  (#147, #124)
 - **Behavior change for every configuration whose `stig_compliance` block resolves
   `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
   never `enabled`, since enforcement defaults to `strict` whenever the block exists:
@@ -116,6 +122,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are also sent as `POST` with the token in the form body, so the token never appears in a
   URL. See the Upgrading to v1.3 guide. Verified against Technitium 15.4 and 15.5.1, and with
   `legacy_token_auth` (reads and writes) against 14.3, 15.4 and 15.5.1. (#147)
+- Client: redirects to another host or scheme are refused, so a redirect can no longer carry the
+  API token, login password, or legacy form-body token to an address `server_url` did not name.
+  URLs in errors and provider diagnostics no longer include userinfo (`user:password@`), and an
+  uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
 - Client: an API error message that echoes the API token or login password is now redacted
   before it reaches a Terraform diagnostic, as non-200 response bodies already were. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same
