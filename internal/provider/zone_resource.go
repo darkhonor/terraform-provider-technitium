@@ -411,10 +411,26 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	plan.ID = types.StringValue(domain)
 
+	failAfterCreate := func(summary string, err error) {
+		resp.Diagnostics.AddError(summary, err.Error())
+		if rerr := r.readZoneState(ctx, &plan); rerr != nil {
+			resp.Diagnostics.AddError("Error reading zone state", rerr.Error())
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	}
+
 	// Set zone options (notify, allow_transfer)
 	if err := r.setZoneOptions(ctx, &plan); err != nil {
-		resp.Diagnostics.AddError("Error setting zone options", err.Error())
+		failAfterCreate("Error setting zone options", err)
 		return
+	}
+
+	if soaSchemeManaged(plan.Type.ValueString()) {
+		if err := r.client.ZoneSOASetSerialDateScheme(ctx, plan.Name.ValueString(), plan.SOASerialDateScheme.ValueBool()); err != nil {
+			failAfterCreate("Error setting SOA serial date scheme", err)
+			return
+		}
 	}
 
 	// Handle DNSSEC signing at create.
@@ -426,7 +442,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 			plan.DNSSEC.NxProof.ValueString(),
 		)
 		if err != nil {
-			resp.Diagnostics.AddError("Error signing zone with DNSSEC", err.Error())
+			failAfterCreate("Error signing zone with DNSSEC", err)
 			return
 		}
 	}
@@ -558,6 +574,14 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
+	if soaSchemeManaged(plan.Type.ValueString()) && !plan.SOASerialDateScheme.IsUnknown() &&
+		!plan.SOASerialDateScheme.Equal(state.SOASerialDateScheme) {
+		if err := r.client.ZoneSOASetSerialDateScheme(ctx, plan.Name.ValueString(), plan.SOASerialDateScheme.ValueBool()); err != nil {
+			resp.Diagnostics.AddError("Error setting SOA serial date scheme", err.Error())
+			return
+		}
+	}
+
 	// Read back state
 	if err := r.readZoneState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading zone state", err.Error())
@@ -675,6 +699,10 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 	return nil
 }
 
+func soaSchemeManaged(zoneType string) bool {
+	return zoneType == "Primary" || zoneType == "Forwarder"
+}
+
 // readZoneState reads the current zone state from the API.
 func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceModel) error {
 	zone, err := r.client.ZoneOptionsGet(ctx, model.Name.ValueString())
@@ -763,7 +791,7 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 	}
 
 	schemeRead := false
-	if zoneType == "Primary" || zoneType == "Forwarder" {
+	if soaSchemeManaged(zoneType) {
 		soa, err := r.client.ZoneSOAGet(ctx, zoneName)
 		if err != nil {
 			return fmt.Errorf("reading SOA record: %w", err)

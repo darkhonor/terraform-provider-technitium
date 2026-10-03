@@ -13,6 +13,8 @@ import (
 	"testing"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -164,5 +166,130 @@ func TestReadZoneState_SOAErrorPropagates(t *testing.T) {
 	m := soaFakeModel("Primary", types.BoolValue(true))
 	if err := f.resource(t).readZoneState(context.Background(), m); err == nil {
 		t.Fatal("expected error when the SOA read fails")
+	}
+}
+func zoneSchema(t *testing.T, r *ZoneResource) resource.SchemaResponse {
+	t.Helper()
+	var s resource.SchemaResponse
+	r.Schema(context.Background(), resource.SchemaRequest{}, &s)
+	return s
+}
+
+func runZoneCreate(t *testing.T, r *ZoneResource, plan *ZoneResourceModel) *resource.CreateResponse {
+	t.Helper()
+	s := zoneSchema(t, r)
+	p := tfsdk.Plan{Schema: s.Schema}
+	if d := p.Set(context.Background(), plan); d.HasError() {
+		t.Fatalf("plan.Set: %v", d)
+	}
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s.Schema}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: p}, resp)
+	return resp
+}
+
+func runZoneUpdate(t *testing.T, r *ZoneResource, prior, plan *ZoneResourceModel) *resource.UpdateResponse {
+	t.Helper()
+	s := zoneSchema(t, r)
+	p := tfsdk.Plan{Schema: s.Schema}
+	if d := p.Set(context.Background(), plan); d.HasError() {
+		t.Fatalf("plan.Set: %v", d)
+	}
+	st := tfsdk.State{Schema: s.Schema}
+	if d := st.Set(context.Background(), prior); d.HasError() {
+		t.Fatalf("state.Set: %v", d)
+	}
+	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: s.Schema}}
+	r.Update(context.Background(), resource.UpdateRequest{Plan: p, State: st}, resp)
+	return resp
+}
+
+func stateScheme(t *testing.T, st tfsdk.State) types.Bool {
+	t.Helper()
+	var m ZoneResourceModel
+	if d := st.Get(context.Background(), &m); d.HasError() {
+		t.Fatalf("state.Get: %v", d)
+	}
+	return m.SOASerialDateScheme
+}
+
+func TestZoneCreate_ForwarderAppliesScheme(t *testing.T) {
+	f := newZoneSOAFake(t, "Forwarder", false)
+	resp := runZoneCreate(t, f.resource(t), soaFakeModel("Forwarder", types.BoolValue(true)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Create: %v", resp.Diagnostics)
+	}
+	if !f.scheme || f.soaUpdates != 1 {
+		t.Fatalf("server scheme = %t after %d updates, want true after 1", f.scheme, f.soaUpdates)
+	}
+	if !stateScheme(t, resp.State).ValueBool() {
+		t.Fatal("state scheme = false, want true")
+	}
+}
+
+func TestZoneCreate_PrimaryNoSOAWriteWhenCreateFlagTookEffect(t *testing.T) {
+	f := newZoneSOAFake(t, "Primary", false)
+	resp := runZoneCreate(t, f.resource(t), soaFakeModel("Primary", types.BoolValue(true)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Create: %v", resp.Diagnostics)
+	}
+	if f.createParams.Get("useSoaSerialDateScheme") != "true" || f.soaUpdates != 0 {
+		t.Fatalf("create flag = %q, SOA updates = %d; want true, 0", f.createParams.Get("useSoaSerialDateScheme"), f.soaUpdates)
+	}
+}
+
+func TestZoneCreate_LateFailurePersistsState(t *testing.T) {
+	f := newZoneSOAFake(t, "Forwarder", false)
+	f.failPath = "/api/zones/records/update"
+	resp := runZoneCreate(t, f.resource(t), soaFakeModel("Forwarder", types.BoolValue(true)))
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error from the failed SOA update")
+	}
+	if resp.State.Raw.IsNull() {
+		t.Fatal("zone exists on the server but was left out of state")
+	}
+	if stateScheme(t, resp.State).ValueBool() {
+		t.Fatal("persisted state must reflect the server (false)")
+	}
+}
+
+func TestZoneUpdate_AppliesChangedScheme(t *testing.T) {
+	f := newZoneSOAFake(t, "Primary", false)
+	resp := runZoneUpdate(t, f.resource(t),
+		soaFakeModel("Primary", types.BoolValue(false)),
+		soaFakeModel("Primary", types.BoolValue(true)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", resp.Diagnostics)
+	}
+	if !f.scheme || f.soaUpdates != 1 || !stateScheme(t, resp.State).ValueBool() {
+		t.Fatalf("server = %t, updates = %d, state = %v", f.scheme, f.soaUpdates, stateScheme(t, resp.State))
+	}
+}
+
+func TestZoneUpdate_UnchangedSchemeSendsNoSOAUpdate(t *testing.T) {
+	f := newZoneSOAFake(t, "Primary", false)
+	resp := runZoneUpdate(t, f.resource(t),
+		soaFakeModel("Primary", types.BoolValue(true)),
+		soaFakeModel("Primary", types.BoolValue(true)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", resp.Diagnostics)
+	}
+	if f.soaUpdates != 0 {
+		t.Fatalf("SOA updates = %d with plan equal to prior state, want 0", f.soaUpdates)
+	}
+	if stateScheme(t, resp.State).ValueBool() {
+		t.Fatal("read-back must report the stale server value (false)")
+	}
+}
+
+func TestZoneUpdate_SecondaryNeverWritesSOA(t *testing.T) {
+	f := newZoneSOAFake(t, "Secondary", true)
+	resp := runZoneUpdate(t, f.resource(t),
+		soaFakeModel("Secondary", types.BoolValue(true)),
+		soaFakeModel("Secondary", types.BoolValue(false)))
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("Update: %v", resp.Diagnostics)
+	}
+	if f.soaUpdates != 0 {
+		t.Fatalf("SOA updates = %d on a Secondary zone, want 0", f.soaUpdates)
 	}
 }
