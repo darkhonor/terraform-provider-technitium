@@ -37,7 +37,7 @@ the whole list in one request (about 1.7 MB for 60,000 domains).
 | Pass the `Authorization` header to Technitium unchanged | `technitium API error (status=invalid-token)` (default mode) |
 | Accept request bodies large enough for your largest list import | `unexpected HTTP status 413` on import |
 | Allow upstream requests to take at least as long as the provider waits (30 seconds) | an error containing `Client.Timeout`, or an HTTP 504 from the proxy |
-| Offer TLS 1.3, or the provider sets `tls_min_version = "1.2"` | "TLS 1.3 not supported by the server" |
+| Offer TLS 1.3 (or TLS 1.2, with `tls_min_version = "1.2"`) | "TLS 1.3 not supported by the server" |
 | Route on the host name in `server_url` and serve a certificate for it | "server certificate verification failed" (certificate does not cover the name), "server certificate signed by unknown authority" (a self-signed default certificate), or `unexpected HTTP status 404` |
 
 Also:
@@ -60,9 +60,11 @@ Also:
   (a Traefik `Host()` rule, several nginx `server_name` blocks) needs `server_url` to carry that
   name; an IP address in `server_url` reaches the default route or certificate.
 * **Prefer TLS 1.3.** The provider requires TLS 1.3 by default; enable it on the proxy wherever
-  the proxy supports it. TLS 1.2 remains supported: if the proxy offers only TLS 1.2, set
-  `tls_min_version = "1.2"`. With `stig_compliance` enabled this can raise DNS-REQ-028; the
-  [STIG compliance guide](stig-compliance.md) explains when that requirement applies.
+  the proxy supports it. TLS 1.2 remains supported: if the proxy in front of `server_url` offers
+  only TLS 1.2, set `tls_min_version = "1.2"`. NSS mode (`nss = true`) requires TLS 1.3. With
+  `stig_compliance` enabled, TLS 1.2 can raise DNS-REQ-028; the
+  [STIG compliance guide](stig-compliance.md) explains when that requirement applies. The
+  connection to a cluster secondary's `node_url` always requires TLS 1.3.
 
 ## Redirects
 
@@ -218,7 +220,7 @@ list import.
 | `unexpected HTTP status 404` | The proxy did not match the host or path; check that `server_url` uses the routed host name and `/api/` reaches Technitium. |
 | `unexpected HTTP status 502` or `504` | The proxy cannot reach Technitium, or its upstream timeout is shorter than the request. |
 | An error containing `Client.Timeout` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for every `node_url` request). |
-| `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2 (enable TLS 1.3 or set `tls_min_version = "1.2"`), or `server_url` uses `https://` against a plain-HTTP port. |
+| `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2 (enable TLS 1.3, or set `tls_min_version = "1.2"` for `server_url`), or `server_url` uses `https://` against a plain-HTTP port. |
 | Certificate signed by unknown authority | The proxy certificate is from a private CA (set `ca_cert_file` or `ca_cert_dir`), or `server_url` uses an IP address and gets a self-signed default certificate (use the routed host name). |
 | Server certificate verification failed | The certificate does not cover the name in `server_url`, for example an IP address; use a host name the certificate covers. |
 | `Parameter '...' missing.` on writes | A same-origin 301/302/303 dropped the request body. |
