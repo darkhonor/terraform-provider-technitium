@@ -18,6 +18,7 @@ before upgrading either the provider or the server.
 | Run Technitium **older than 15.0** | Set `legacy_token_auth = true` before upgrading the provider, or upgrade the server first. |
 | Have two `FWD` records in one zone with the same `value` **and** `protocol` | Rebuild them so each pair differs by `value` or `protocol`. The provider refuses to destroy or update either record until you do. |
 | Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme, host, and port. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration; a `technitium_cluster_secondary` `node_url` that does fails at apply. |
+| Manage `technitium_zone` Forwarder zones, or a Primary zone whose SOA serial scheme was changed outside Terraform | Expect a one-time `soa_serial_date_scheme` change on the first plan. Applying it updates the zone's SOA record and increments its serial; switching to `true` moves the serial to the date form. To keep the server's current scheme, set `soa_serial_date_scheme` to match it. |
 | Plan to upgrade Technitium to **15.5 or later** | Review forwarder zones whose forwarders have `dnssec_validation = false`, and the comments on those records. |
 
 Everyone else can upgrade without configuration changes.
@@ -126,7 +127,8 @@ namespace, and the server says so to every client. Two consequences:
 1. **Server older than 15.0?** Add `legacy_token_auth = true` to the provider block.
 2. **Upgrade the provider** to `~> 1.3` and run `terraform init -upgrade`.
 3. **Run `terraform plan`.** Resolve any "Forwarder records cannot be told apart" warning by
-   rebuilding the pair, then apply.
+   rebuilding the pair. Expect `soa_serial_date_scheme` changes on Forwarder zones, as described
+   above. Then apply.
 4. **Upgrade Technitium** to 15.5.1 or later. Review non-validating forwarders and their
    comments as described above.
 5. **Remove `legacy_token_auth`** if you set it, and run `terraform plan`. It should report no

@@ -101,7 +101,7 @@ The older workaround — set `enabled = false`, apply, then re-enable with new p
 
 * `type` - (Required, String) Zone type. Valid values: `Primary`, `Secondary`, `Stub`, `Forwarder`. (Forces replacement.)
 
-* `soa_serial_date_scheme` - (Optional, Boolean) Use date-based SOA serial numbering. Default: `true`.
+* `soa_serial_date_scheme` - (Optional, Boolean) Use the date-based SOA serial scheme (`YYYYMMDDnn`). Default: `true`. Read from the zone's SOA record, so a change made outside Terraform shows as drift. Applies to `Primary` and `Forwarder` zones; changing it updates the SOA record and increments the serial. On `Secondary` and `Stub` zones the SOA comes from the primary and the value has no effect.
 
 * `notify` - (Optional, List of String) IP addresses to notify on zone changes.
 

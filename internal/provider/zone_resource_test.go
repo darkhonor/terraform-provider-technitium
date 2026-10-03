@@ -30,12 +30,11 @@ func TestAccZoneResource_Primary(t *testing.T) {
 			},
 			// Import
 			{
-				ResourceName:      "technitium_zone.test",
-				ImportState:       true,
-				ImportStateId:     "acc-test.example.com",
-				ImportStateVerify: true,
-				// soa_serial_date_scheme is a create-only param, can't be read back
-				ImportStateVerifyIgnore: []string{"soa_serial_date_scheme", "dnssec"},
+				ResourceName:            "technitium_zone.test",
+				ImportState:             true,
+				ImportStateId:           "acc-test.example.com",
+				ImportStateVerify:       true,
+				ImportStateVerifyIgnore: []string{"dnssec"},
 			},
 		},
 	})

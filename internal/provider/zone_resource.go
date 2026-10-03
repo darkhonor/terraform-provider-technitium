@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-go/tftypes"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -108,7 +109,7 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				},
 			},
 			"soa_serial_date_scheme": schema.BoolAttribute{
-				Description: "Use date-based SOA serial numbering scheme.",
+				Description: "Use the date-based SOA serial scheme (YYYYMMDDnn). Read from the zone's SOA record. Applies to Primary and Forwarder zones; changing it updates the SOA record and increments the serial. No effect on Secondary and Stub zones.",
 				Optional:    true,
 				Computed:    true,
 				Default:     booldefault.StaticBool(true),
@@ -257,6 +258,15 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		return
 	}
 
+	var cfgScheme types.Bool
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("soa_serial_date_scheme"), &cfgScheme)...)
+	if !cfgScheme.IsNull() && !cfgScheme.IsUnknown() && !cfgScheme.ValueBool() &&
+		!plan.Type.IsUnknown() && !soaSchemeManaged(plan.Type.ValueString()) {
+		resp.Diagnostics.AddAttributeWarning(path.Root("soa_serial_date_scheme"),
+			"soa_serial_date_scheme has no effect on this zone type",
+			fmt.Sprintf("soa_serial_date_scheme applies only to Primary and Forwarder zones, not %s.", plan.Type.ValueString()))
+	}
+
 	// NSS validation: when running in NSS mode with ECDSA, P256 is not allowed.
 	// CNSSI 1253 requires P384 for higher security margin in classified environments.
 	if r.providerData != nil && r.providerData.NSS &&
@@ -271,9 +281,7 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 	}
 
 	// Issue #96: algorithm/curve pair validity is config-static — refuse at
-	// plan time on CREATES too (the gate below only runs on updates), so an
-	// invalid pair can never create a zone whose signing then fails, leaving
-	// an orphaned server-side zone with no state.
+	// plan time on CREATES too (the gate below only runs on updates).
 	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil &&
 		!plan.DNSSEC.Enabled.IsUnknown() && plan.DNSSEC.Enabled.ValueBool() &&
 		!plan.DNSSEC.Algorithm.IsUnknown() && !plan.DNSSEC.Curve.IsUnknown() &&
@@ -386,9 +394,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	// Issue #96: revalidate the algorithm/curve pair with RESOLVED values
 	// before the zone exists. The ModifyPlan check skips unknowns (values
-	// from another resource), so a pair that resolves invalid at apply must
-	// be refused HERE — after ZoneCreate a failed sign would orphan a
-	// server-side zone with no state.
+	// from another resource).
 	if plan.Type.ValueString() == "Primary" && plan.DNSSEC != nil && plan.DNSSEC.Enabled.ValueBool() &&
 		!dnssecIdentityValid(plan.DNSSEC.Algorithm.ValueString(), plan.DNSSEC.Curve.ValueString()) {
 		resp.Diagnostics.AddError("Invalid DNSSEC algorithm/curve combination",
@@ -411,10 +417,27 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	plan.ID = types.StringValue(domain)
 
+	failAfterCreate := func(summary string, err error) {
+		resp.Diagnostics.AddError(summary, err.Error())
+		if rerr := r.readZoneState(ctx, &plan); rerr != nil {
+			resp.Diagnostics.AddError("Error reading zone state", rerr.Error())
+			persistCreatedZone(ctx, req, domain, resp)
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+	}
+
 	// Set zone options (notify, allow_transfer)
 	if err := r.setZoneOptions(ctx, &plan); err != nil {
-		resp.Diagnostics.AddError("Error setting zone options", err.Error())
+		failAfterCreate("Error setting zone options", err)
 		return
+	}
+
+	if soaSchemeManaged(plan.Type.ValueString()) {
+		if err := r.client.ZoneSOASetSerialDateScheme(ctx, plan.Name.ValueString(), plan.SOASerialDateScheme.ValueBool()); err != nil {
+			failAfterCreate("Error setting SOA serial date scheme", err)
+			return
+		}
 	}
 
 	// Handle DNSSEC signing at create.
@@ -426,7 +449,7 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 			plan.DNSSEC.NxProof.ValueString(),
 		)
 		if err != nil {
-			resp.Diagnostics.AddError("Error signing zone with DNSSEC", err.Error())
+			failAfterCreate("Error signing zone with DNSSEC", err)
 			return
 		}
 	}
@@ -434,10 +457,28 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 	// Read back state
 	if err := r.readZoneState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading zone state", err.Error())
+		persistCreatedZone(ctx, req, domain, resp)
 		return
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
+}
+
+// persistCreatedZone stores the plan, with unknown values nulled, for a zone
+// that exists on the server but could not be read back.
+func persistCreatedZone(ctx context.Context, req resource.CreateRequest, id string, resp *resource.CreateResponse) {
+	raw, err := tftypes.Transform(req.Plan.Raw, func(_ *tftypes.AttributePath, v tftypes.Value) (tftypes.Value, error) {
+		if !v.IsKnown() {
+			return tftypes.NewValue(v.Type(), nil), nil
+		}
+		return v, nil
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Error saving the created zone to state", err.Error())
+		return
+	}
+	resp.State.Raw = raw
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), id)...)
 }
 
 func (r *ZoneResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -558,6 +599,13 @@ func (r *ZoneResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		}
 	}
 
+	if soaSchemeManaged(plan.Type.ValueString()) && !plan.SOASerialDateScheme.IsUnknown() {
+		if err := r.client.ZoneSOASetSerialDateScheme(ctx, plan.Name.ValueString(), plan.SOASerialDateScheme.ValueBool()); err != nil {
+			resp.Diagnostics.AddError("Error setting SOA serial date scheme", err.Error())
+			return
+		}
+	}
+
 	// Read back state
 	if err := r.readZoneState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading zone state", err.Error())
@@ -675,6 +723,10 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 	return nil
 }
 
+func soaSchemeManaged(zoneType string) bool {
+	return zoneType == "Primary" || zoneType == "Forwarder"
+}
+
 // readZoneState reads the current zone state from the API.
 func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceModel) error {
 	zone, err := r.client.ZoneOptionsGet(ctx, model.Name.ValueString())
@@ -762,8 +814,20 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.SOASerial = types.Int64Value(0)
 	}
 
-	// Set SOASerialDateScheme to match provider default (true)
-	model.SOASerialDateScheme = types.BoolValue(true)
+	schemeRead := false
+	if soaSchemeManaged(zoneType) {
+		soa, err := r.client.ZoneSOAGet(ctx, zoneName)
+		if err != nil {
+			return fmt.Errorf("reading SOA record: %w", err)
+		}
+		if soa.RData.UseSerialDateScheme != nil {
+			model.SOASerialDateScheme = types.BoolValue(*soa.RData.UseSerialDateScheme)
+			schemeRead = true
+		}
+	}
+	if !schemeRead && (model.SOASerialDateScheme.IsNull() || model.SOASerialDateScheme.IsUnknown()) {
+		model.SOASerialDateScheme = types.BoolValue(true)
+	}
 
 	// Read DNSSEC state
 	if zone.DNSSECStatus != "Unsigned" && zone.DNSSECStatus != "" {

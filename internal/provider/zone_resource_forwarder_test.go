@@ -49,7 +49,7 @@ func TestAccZoneResource_Forwarder(t *testing.T) {
 				ImportState:             true,
 				ImportStateId:           "acc-forwarder.example.com",
 				ImportStateVerify:       true,
-				ImportStateVerifyIgnore: []string{"soa_serial_date_scheme", "dnssec"},
+				ImportStateVerifyIgnore: []string{"dnssec"},
 			},
 		},
 	})
