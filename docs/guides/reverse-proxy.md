@@ -59,10 +59,10 @@ Also:
   TLS (SNI and certificate checks), not the HTTP `Host` header. A proxy that routes by host name
   (a Traefik `Host()` rule, several nginx `server_name` blocks) needs `server_url` to carry that
   name; an IP address in `server_url` reaches the default route or certificate.
-* **Keep TLS 1.3.** The provider requires TLS 1.3 by default. With `stig_compliance` enabled,
-  `tls_min_version = "1.2"` is a DNS-REQ-028 finding, which blocks the run under the default
-  `strict` enforcement; see the [STIG compliance guide](stig-compliance.md). Enable TLS 1.3 on the
-  proxy instead.
+* **Keep TLS 1.3.** The provider requires TLS 1.3 by default. Lowering `tls_min_version` to
+  `"1.2"` can raise DNS-REQ-028 when `stig_compliance` is enabled; the
+  [STIG compliance guide](stig-compliance.md) explains when that requirement applies. Enable
+  TLS 1.3 on the proxy instead.
 
 ## Redirects
 
@@ -196,7 +196,10 @@ list import.
   the secondary needs an upstream timeout at least that long;
 * over `https://`, requires TLS 1.3 and trusts the system certificate store, or skips verification
   with `node_skip_tls_verify`;
-* always sends the token or session in the `Authorization` header, so the proxy must pass it;
+* always sends the token or session in the `Authorization` header, so the proxy must pass it,
+  and a secondary running Technitium older than 15.0 fails with `invalid-token` whatever
+  `legacy_token_auth` is set to;
+* sends `node_password` in the `/api/user/login` form body when `node_token` is not set;
 * ignores the provider's `ca_cert_file`, `ca_cert_dir`, `tls_server_name`, `tls_min_version`,
   and `legacy_token_auth`;
 * sends the primary node's credentials (`primary_node_username`, `primary_node_password`) in the
@@ -214,7 +217,7 @@ list import.
 | `unexpected HTTP status 403 on login` | Session login (`username`/`password`) is a `POST`; allow it on `/api/user/login`. |
 | `unexpected HTTP status 404` | The proxy did not match the host or path; check that `server_url` uses the routed host name and `/api/` reaches Technitium. |
 | `unexpected HTTP status 502` or `504` | The proxy cannot reach Technitium, or its upstream timeout is shorter than the request. |
-| An error containing `Client.Timeout` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for a cluster join). |
+| An error containing `Client.Timeout` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for every `node_url` request). |
 | `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2 (enable TLS 1.3), or `server_url` uses `https://` against a plain-HTTP port. |
 | Certificate signed by unknown authority | The proxy certificate is from a private CA (set `ca_cert_file` or `ca_cert_dir`), or `server_url` uses an IP address and gets a self-signed default certificate (use the routed host name). |
 | Server certificate verification failed | The certificate does not cover the name in `server_url`, for example an IP address; use a host name the certificate covers. |
