@@ -197,15 +197,20 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Default:     booldefault.StaticBool(true),
 			},
 			"forwarders": schema.ListAttribute{
-				Description: "List of forwarder addresses. STIG BIND-9X-001360 (SC-20).",
+				Description: "List of forwarder addresses. STIG BIND-9X-001360 (SC-20). Stored in Technitium's canonical " +
+					"form for forwarder_protocol; state keeps the configured spelling while the server's value is its canonical form. " +
+					"Forwarders the server would store differently, such as port 53 with forwarder_protocol Tls, are rejected.",
 				Optional:    true,
 				ElementType: types.StringType,
+				Validators:  []validator.List{forwardersValidator{}},
 			},
 			"forwarder_protocol": schema.StringAttribute{
-				Description: "Forwarder transport protocol. STIG SC-8. Valid: Udp, Tcp, Tls, Https, Quic.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("Tls"),
+				Description: "Forwarder transport protocol. STIG SC-8. Valid: Udp, Tcp, Tls, Https, Quic. Applies only when " +
+					"forwarders is set in the same configuration.",
+				Optional:      true,
+				Computed:      true,
+				Default:       stringdefault.StaticString("Tls"),
+				PlanModifiers: []planmodifier.String{forwarderProtocolModifier{}},
 			},
 			"enable_dns_over_tls": schema.BoolAttribute{
 				Description: "Enable DNS-over-TLS listener. STIG SC-8.",
@@ -345,8 +350,11 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 
 	plan.ID = types.StringValue("server-settings")
 
-	// Apply settings
+	if invalidForwarders(ctx, &plan, &resp.Diagnostics) {
+		return
+	}
 	params := r.buildParams(ctx, &plan)
+	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error setting server settings", err.Error())
@@ -354,7 +362,6 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	// Read back
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
@@ -385,7 +392,11 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
+	if invalidForwarders(ctx, &plan, &resp.Diagnostics) {
+		return
+	}
 	params := r.buildParams(ctx, &plan)
+	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error updating server settings", err.Error())
@@ -476,9 +487,7 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	model.BlockingAnswerTTL = types.Int64Value(int64(settings.BlockingAnswerTTL))
 	model.BlockListUpdateIntervalHours = types.Int64Value(int64(settings.BlockListUpdateIntervalHours))
 	model.ServeStale = types.BoolValue(settings.ServeStale)
-	// ForwarderProtocol: the API only persists this when forwarders are configured.
-	// If no forwarders, keep the planned value to avoid drift.
-	if len(settings.Forwarders) > 0 || model.ForwarderProtocol.IsNull() || model.ForwarderProtocol.IsUnknown() {
+	if (len(settings.Forwarders) > 0 && !model.Forwarders.IsNull()) || model.ForwarderProtocol.IsNull() || model.ForwarderProtocol.IsUnknown() {
 		model.ForwarderProtocol = types.StringValue(settings.ForwarderProtocol)
 	}
 	model.EnableDnsOverTls = types.BoolValue(settings.EnableDnsOverTls)
@@ -514,7 +523,7 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	readStringList(ctx, &model.BlockingBypassList, settings.BlockingBypassList)
 	readStringList(ctx, &model.CustomBlockingAddresses, settings.CustomBlockingAddresses)
 	readStringList(ctx, &model.BlockListUrls, settings.BlockListUrls)
-	readStringList(ctx, &model.Forwarders, settings.Forwarders)
+	model.Forwarders = reconcileForwarders(ctx, model.Forwarders, settings.Forwarders, settings.ForwarderProtocol)
 	readStringList(ctx, &model.ZoneTransferAllowedNetworks, settings.ZoneTransferAllowedNetworks)
 	readStringList(ctx, &model.NotifyAllowedNetworks, settings.NotifyAllowedNetworks)
 
