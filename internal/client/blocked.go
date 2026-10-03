@@ -24,7 +24,7 @@ type filteredZoneListResponse struct {
 // exportFilteredZones fetches the plain-text export from the given path
 // (e.g. /api/blocked/export or /api/allowed/export) and returns one domain
 // per line. It bypasses doGet because the export endpoint returns plain text,
-// not JSON.
+// not JSON, so it applies its own status and error-envelope checks.
 //
 // The API token is sent as an "Authorization: Bearer" header by default; set
 // c.legacyTokenAuth to fall back to the "token" query parameter for
@@ -52,9 +52,23 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 		return nil, fmt.Errorf("reading response from %s: %w", path, err)
 	}
 
-	text := strings.TrimSpace(string(body))
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected HTTP status %d from %s: %s", resp.StatusCode, path, c.errorBody(body))
+	}
+
+	text := strings.TrimSpace(strings.TrimPrefix(string(body), "\ufeff"))
 	if text == "" {
 		return []string{}, nil
+	}
+	switch text[0] {
+	case '{':
+		var env APIResponse
+		if json.Unmarshal([]byte(text), &env) == nil && env.Status != "" && env.Status != "ok" {
+			return nil, &APIError{Status: env.Status, ErrorMessage: env.ErrorMessage}
+		}
+		return nil, fmt.Errorf("unexpected JSON response from %s: %s", path, c.errorBody(body))
+	case '<':
+		return nil, fmt.Errorf("unexpected HTML response from %s: %s", path, c.errorBody(body))
 	}
 
 	lines := strings.Split(text, "\n")
