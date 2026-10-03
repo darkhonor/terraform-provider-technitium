@@ -5,6 +5,9 @@ package provider
 
 import (
 	"context"
+	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -63,11 +66,7 @@ func reconcileForwarders(ctx context.Context, configured types.List, server []st
 	}
 	for i, e := range configured.Elements() {
 		s, ok := e.(types.String)
-		if !ok || s.IsNull() || s.IsUnknown() {
-			return fromServer
-		}
-		canonical, err := canonicalForwarder(s.ValueString(), protocol)
-		if err != nil || canonical != server[i] {
+		if !ok || s.IsNull() || s.IsUnknown() || !sameForwarder(s.ValueString(), server[i], protocol) {
 			return fromServer
 		}
 	}
@@ -95,6 +94,33 @@ func (forwarderProtocolModifier) PlanModifyString(ctx context.Context, req planm
 	}
 	resp.Diagnostics.AddAttributeWarning(req.Path, "forwarder_protocol has no effect without forwarders",
 		"forwarder_protocol has no effect unless forwarders is set in the same configuration.")
+}
+
+func sameForwarder(configured, server, protocol string) bool {
+	want, err := canonicalForwarder(configured, protocol)
+	if err != nil {
+		return false
+	}
+	got, err := canonicalForwarder(server, protocol)
+	if err != nil {
+		got = server
+	}
+	return strings.EqualFold(want, got)
+}
+
+func invalidForwarders(ctx context.Context, plan *ServerSettingsResourceModel, diags *diag.Diagnostics) bool {
+	if plan.Forwarders.IsNull() || plan.Forwarders.IsUnknown() {
+		return false
+	}
+	protocol := plan.ForwarderProtocol.ValueString()
+	var items []string
+	diags.Append(plan.Forwarders.ElementsAs(ctx, &items, false)...)
+	for i, f := range items {
+		if _, err := canonicalForwarder(f, protocol); err != nil {
+			diags.AddAttributeError(path.Root("forwarders").AtListIndex(i), "Invalid forwarder", err.Error())
+		}
+	}
+	return diags.HasError()
 }
 
 func omitUnmanagedForwarders(params map[string]string, forwarders types.List) {

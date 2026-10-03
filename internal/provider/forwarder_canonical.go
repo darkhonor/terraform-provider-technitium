@@ -16,6 +16,8 @@ import (
 var forwarderPortPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 var forwarderDigitsAndDots = regexp.MustCompile(`^[0-9.]+$`)
 
+var forwarderSchemePrefix = regexp.MustCompile(`(?i)^(udp|tcp|tls|quic)://`)
+
 var forwarderProtocols = map[string]string{"udp": "Udp", "tcp": "Tcp", "tls": "Tls", "https": "Https", "quic": "Quic"}
 
 func canonicalForwarder(input, protocol string) (string, error) {
@@ -33,7 +35,11 @@ func canonicalForwarder(input, protocol string) (string, error) {
 	base, suffix := s, ""
 	if i := strings.LastIndex(s, " ("); i > 0 && strings.HasSuffix(s, ")") {
 		base, suffix = s[:i], s[i:]
-		addr, err := netip.ParseAddr(suffix[2 : len(suffix)-1])
+		inner := suffix[2 : len(suffix)-1]
+		if strings.HasPrefix(inner, "[") && strings.HasSuffix(inner, "]") {
+			inner = inner[1 : len(inner)-1]
+		}
+		addr, err := netip.ParseAddr(inner)
 		if err != nil || addr.Zone() != "" {
 			return "", fmt.Errorf("forwarder %q: the address in parentheses must be an IP address", input)
 		}
@@ -47,6 +53,10 @@ func canonicalForwarder(input, protocol string) (string, error) {
 	}
 	if !udp {
 		base = strings.TrimRight(base, " ")
+	}
+
+	if m := forwarderSchemePrefix.FindString(base); m != "" {
+		base = base[len(m):]
 	}
 
 	if strings.HasPrefix(strings.ToLower(base), "https://") {

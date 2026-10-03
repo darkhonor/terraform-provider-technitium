@@ -350,6 +350,9 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 
 	plan.ID = types.StringValue("server-settings")
 
+	if invalidForwarders(ctx, &plan, &resp.Diagnostics) {
+		return
+	}
 	params := r.buildParams(ctx, &plan)
 	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {
@@ -389,6 +392,9 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
+	if invalidForwarders(ctx, &plan, &resp.Diagnostics) {
+		return
+	}
 	params := r.buildParams(ctx, &plan)
 	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {

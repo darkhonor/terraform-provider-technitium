@@ -152,6 +152,8 @@ func TestCanonicalForwarder(t *testing.T) {
 		{"[2606:4700:4700:0:0:0:0:1111]:5353", "Udp", "[2606:4700:4700:0:0:0:0:1111]:5353", false},
 		{"[2606:4700:4700::ABCD]:5353", "Tcp", "[2606:4700:4700::abcd]:5353", false},
 		{"[2606:4700:4700:0:0:0:0:1111]:5353", "Tcp", "[2606:4700:4700::1111]:5353", false},
+		{"dns.example.test:853 ([2606:4700:4700::1111])", "Tls", "dns.example.test:853 ([2606:4700:4700::1111])", false},
+		{"dns.example.test ([2606:4700:4700::1111])", "Udp", "dns.example.test ([2606:4700:4700::1111])", false},
 		{"", "Tls", "", true},
 		{"1.1.1.1:0", "Tls", "", true},
 		{"1.1.1.1:99999", "Tls", "", true},
@@ -175,6 +177,22 @@ func TestCanonicalForwarder(t *testing.T) {
 		}
 		if got != tc.want {
 			t.Errorf("%s %q: got %q, want %q", tc.protocol, tc.input, got, tc.want)
+		}
+	}
+}
+
+func TestCanonicalForwarder_IsIdempotent(t *testing.T) {
+	for _, in := range []struct{ input, protocol string }{
+		{"1.1.1.1", "Udp"}, {"1.1.1.1", "Tls"}, {"2606:4700:4700::ABCD", "Tcp"}, {"dns.example.test (1.1.1.1)", "Tls"},
+		{"dns.example.test (2606:4700:4700::ABCD)", "Https"}, {"[2606:4700:4700::ABCD]:5353", "Udp"}, {"DNS.Example.Test", "Quic"},
+	} {
+		once, err := canonicalForwarder(in.input, in.protocol)
+		if err != nil {
+			t.Fatalf("%s %q: %v", in.protocol, in.input, err)
+		}
+		twice, err := canonicalForwarder(once, in.protocol)
+		if err != nil || twice != once {
+			t.Errorf("%s %q: canonical %q re-canonicalizes to %q (err %v)", in.protocol, in.input, once, twice, err)
 		}
 	}
 }

@@ -115,6 +115,28 @@ func TestForwardersValidator_AcceptsValidAndSkipsUnknown(t *testing.T) {
 	}
 }
 
+func TestReconcileForwarders_EquivalentServerSpellings(t *testing.T) {
+	cases := []struct{ configured, server, protocol string }{
+		{"1.1.1.1", "1.1.1.1:53", "Udp"},
+		{"dns.example.test", "DNS.Example.Test:853", "Tls"},
+		{"tcp://1.1.1.1", "tcp://1.1.1.1", "Tcp"},
+		{"tls://1.1.1.1", "tcp://1.1.1.1", "Tcp"},
+		{"udp://1.1.1.1:5353", "1.1.1.1:5353", "Tls"},
+		{"tcp://1.1.1.1", "1.1.1.1", "Udp"},
+		{"udp://1.1.1.1:5353", "https://1.1.1.1:5353/dns-query", "Https"},
+		{"dns.example.test:853 ([2606:4700:4700::1111])", "dns.example.test:853 ([2606:4700:4700::1111])", "Tls"},
+	}
+	for _, tc := range cases {
+		got := reconcileForwarders(context.Background(), stringList(t, tc.configured), []string{tc.server}, tc.protocol)
+		if g := strings.Join(listStrings(t, got), ","); g != tc.configured {
+			t.Errorf("%s %q vs server %q: state = %q, want configured spelling", tc.protocol, tc.configured, tc.server, g)
+		}
+	}
+	if got := reconcileForwarders(context.Background(), stringList(t, "1.1.1.2"), []string{"1.1.1.1:53"}, "Udp"); strings.Join(listStrings(t, got), ",") != "1.1.1.1:53" {
+		t.Errorf("a different endpoint must be reported as drift, got %v", got)
+	}
+}
+
 func TestReconcileForwarders(t *testing.T) {
 	configured := stringList(t, "1.1.1.1", "9.9.9.9")
 	cases := []struct {
@@ -210,6 +232,30 @@ func settingsServer(t *testing.T, forwarders []string, protocol string) *http.Se
 		_, _ = fmt.Fprintf(w, `{"status":"ok","response":{"forwarders":%s,"forwarderProtocol":%q}}`, fw, protocol)
 	})
 	return mux
+}
+
+func TestServerSettingsCreate_RejectsLossyForwardersResolvedAtApply(t *testing.T) {
+	ctx := context.Background()
+	called := false
+	mux := settingsServer(t, nil, "Tls")
+	mux.HandleFunc("/api/settings/set/", func(http.ResponseWriter, *http.Request) {})
+	srv := http.NewServeMux()
+	srv.HandleFunc("/api/settings/set", func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		mux.ServeHTTP(w, r)
+	})
+	srv.Handle("/", mux)
+	r := &ServerSettingsResource{client: newTestClient(t, srv)}
+	cfg := settingsModel(stringList(t, "1.1.1.1:53"), types.StringValue("Tls"))
+	config, p, _ := newForwardersFixture(t, cfg, cfg, nil)
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: p.Schema}}
+	r.Create(ctx, resource.CreateRequest{Config: config, Plan: p}, resp)
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected a forwarder error")
+	}
+	if called {
+		t.Error("settings were sent despite an invalid forwarder")
+	}
 }
 
 func TestReadState_ForwardersKeepConfiguredSpelling(t *testing.T) {
