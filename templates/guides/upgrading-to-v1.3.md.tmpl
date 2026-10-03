@@ -93,9 +93,11 @@ they are `POST` too.
 * Point `server_url` at the final scheme and host. The provider follows a redirect only when
   the scheme and host stay the same (for example, a port or path change). It refuses any other
   redirect, including Technitium's own HTTP-to-HTTPS redirect, with an error naming both URLs,
-  so the token and TLS settings never go somewhere `server_url` did not name. A 301, 302, or
-  303 on a write fails regardless, because the request is re-sent as a `GET` without its body;
-  with `legacy_token_auth` that applies to reads too.
+  so the token and TLS settings never go somewhere `server_url` did not name. A same-host 301,
+  302, or 303 re-sends a write as a `GET` without its body: most writes then fail ("Parameter
+  ... missing"), but a write that takes no parameters, such as flushing the blocked or allowed
+  list, can run as a `GET`. With `legacy_token_auth` the token is in that body too, so every
+  request fails.
 
 ## Upgrading Technitium to 15.5 or later
 

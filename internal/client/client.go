@@ -287,6 +287,9 @@ func redactURL(rawURL string) string {
 func redactTransportErr(path string, err error) error {
 	var urlErr *url.Error
 	if errors.As(err, &urlErr) {
+		if strings.HasPrefix(urlErr.Err.Error(), "failed to parse Location header") {
+			return fmt.Errorf("%s %s failed: server sent an unparseable redirect Location header", urlErr.Op, redactURL(urlErr.URL))
+		}
 		return fmt.Errorf("%s %s failed: %w", urlErr.Op, redactURL(urlErr.URL), urlErr.Err)
 	}
 	return fmt.Errorf("request to %s failed: %w", path, err)
@@ -316,15 +319,19 @@ const maxErrorBodyBytes = 512
 // its URL-encoded forms -- before the body is truncated, so truncation can
 // never leave a partial credential behind.
 func (c *Client) errorBody(body []byte) string {
-	s := c.redactSecrets(string(body))
+	return c.errorBodyWith(body, nil)
+}
+
+func (c *Client) errorBodyWith(body []byte, extra []string) string {
+	s := c.redactSecrets(string(body), extra...)
 	if len(s) > maxErrorBodyBytes {
 		s = strings.ToValidUTF8(s[:maxErrorBodyBytes], "") + " [truncated]"
 	}
 	return s
 }
 
-func (c *Client) redactSecrets(s string) string {
-	for _, secret := range []string{c.token, c.password} {
+func (c *Client) redactSecrets(s string, extra ...string) string {
+	for _, secret := range append([]string{c.token, c.password}, extra...) {
 		if secret == "" {
 			continue
 		}
@@ -390,18 +397,22 @@ func (c *Client) doPost(ctx context.Context, path string, params url.Values) (*A
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	return c.parseResponse(resp)
+	return c.parseResponseWith(resp, requestSecrets(params))
 }
 
 // parseResponse reads the response body and checks for API-level errors.
 func (c *Client) parseResponse(resp *http.Response) (*APIResponse, error) {
+	return c.parseResponseWith(resp, nil)
+}
+
+func (c *Client) parseResponseWith(resp *http.Response, extra []string) (*APIResponse, error) {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, fmt.Errorf("reading response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected HTTP status %d: %s", resp.StatusCode, c.errorBody(body))
+		return nil, fmt.Errorf("unexpected HTTP status %d: %s", resp.StatusCode, c.errorBodyWith(body, extra))
 	}
 
 	var apiResp APIResponse
@@ -412,7 +423,7 @@ func (c *Client) parseResponse(resp *http.Response) (*APIResponse, error) {
 	if apiResp.Status != "ok" {
 		return nil, &APIError{
 			Status:       apiResp.Status,
-			ErrorMessage: c.redactSecrets(apiResp.ErrorMessage),
+			ErrorMessage: c.redactSecrets(apiResp.ErrorMessage, extra...),
 		}
 	}
 
@@ -443,4 +454,20 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 			redactURL(orig.String()), redactURL(req.URL.String()))
 	}
 	return nil
+}
+
+var secretParams = []string{"pass", "newPass", "proxyPassword", "primaryNodePassword", "primaryNodeTotp", "ssoClientSecret", "webServiceTlsCertificatePassword"}
+
+func requestSecrets(params url.Values) []string {
+	var out []string
+	for _, k := range secretParams {
+		out = append(out, params[k]...)
+	}
+	for _, v := range params["tsigKeys"] {
+		parts := strings.Split(v, "|")
+		for i := 1; i < len(parts); i += 3 {
+			out = append(out, parts[i])
+		}
+	}
+	return out
 }

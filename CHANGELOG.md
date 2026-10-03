@@ -118,8 +118,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
   proxies and access logs record them; large blocked/allowed imports no longer risk the
   server's request-line limit. A reverse proxy or WAF must allow `POST` on `/api/*`, and
-  `server_url` must name the final scheme and host: a 301/302/303 on a `POST` is re-sent as a
-  bodyless `GET` and fails, and a redirect to another scheme or host is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
+  `server_url` must name the final scheme and host: a 301/302/303 re-sends a `POST` as a
+  bodyless `GET`, which fails for any write that takes parameters, and a redirect to another
+  scheme or host is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
   are also sent as `POST` with the token in the form body, so the token never appears in a
   URL. See the Upgrading to v1.3 guide. Verified against Technitium 15.4 and 15.5.1, and with
   `legacy_token_auth` (reads and writes) against 14.3, 15.4 and 15.5.1. (#147)
@@ -127,6 +128,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   API token, login password, or legacy form-body token to an address `server_url` did not name.
   URLs in errors and provider diagnostics no longer include userinfo (`user:password@`), and an
   uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
+- Client: error text no longer echoes secrets sent in the failed request (user passwords,
+  FWD `proxy_password`, cluster join credentials, SSO client secret, TLS certificate password,
+  TSIG shared secrets) when a proxy page or error envelope repeats them, and an unparseable
+  redirect `Location` header is no longer quoted. (#147)
 - Client: an API error message that echoes the API token or login password is now redacted
   before it reaches a Terraform diagnostic, as non-200 response bodies already were. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same

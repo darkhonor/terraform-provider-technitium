@@ -207,3 +207,61 @@ func TestRedactRequestErr_StripsTokenFromURL(t *testing.T) {
 		t.Errorf("token not stripped: %v", err)
 	}
 }
+
+func TestRequestSecrets_RedactedFromErrorBodiesAndEnvelopes(t *testing.T) {
+	const secret = "req-SECRET-v@lue+1"
+	cases := map[string]url.Values{
+		"pass":                             {"user": {"alice"}, "pass": {secret}},
+		"newPass":                          {"user": {"alice"}, "newPass": {secret}},
+		"proxyPassword":                    {"proxyPassword": {secret}},
+		"primaryNodePassword":              {"primaryNodePassword": {secret}},
+		"primaryNodeTotp":                  {"primaryNodeTotp": {secret}},
+		"ssoClientSecret":                  {"ssoClientSecret": {secret}},
+		"webServiceTlsCertificatePassword": {"webServiceTlsCertificatePassword": {secret}},
+		"tsigKeys":                         {"tsigKeys": {"key1|" + secret + "|hmac-sha256|key2|other-" + secret + "|hmac-sha256"}},
+	}
+	for name, params := range cases {
+		for _, mode := range []string{"502-echo", "envelope-echo"} {
+			t.Run(name+"/"+mode, func(t *testing.T) {
+				srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+					_ = r.ParseForm()
+					if mode == "502-echo" {
+						w.WriteHeader(http.StatusBadGateway)
+						_, _ = fmt.Fprintf(w, "<html>blocked: %s</html>", r.PostForm.Encode())
+						return
+					}
+					_, _ = fmt.Fprintf(w, `{"status":"error","errorMessage":"rejected %s"}`, secret)
+				})
+				defer srv.Close()
+				c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: "t"})
+				_, err := c.doPost(context.Background(), "/api/x", params)
+				if err == nil {
+					t.Fatal("expected an error")
+				}
+				for _, form := range []string{secret, url.QueryEscape(secret)} {
+					if strings.Contains(err.Error(), form) {
+						t.Errorf("error leaks %s as %q: %v", name, form, err)
+					}
+				}
+			})
+		}
+	}
+}
+
+func TestRedactTransportErr_MalformedLocationIsNotQuoted(t *testing.T) {
+	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Location", "http://user:password@dns.example/lo%ZZgin?token=SECRET-LOC")
+		w.WriteHeader(http.StatusTemporaryRedirect)
+	})
+	defer srv.Close()
+	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: "t"})
+	_, err := c.doPost(context.Background(), "/api/x", nil)
+	if err == nil {
+		t.Fatal("expected an error for an unparseable Location header")
+	}
+	for _, bad := range []string{"SECRET-LOC", "password@", "user:"} {
+		if strings.Contains(err.Error(), bad) {
+			t.Errorf("error quotes the Location header (%q): %v", bad, err)
+		}
+	}
+}
