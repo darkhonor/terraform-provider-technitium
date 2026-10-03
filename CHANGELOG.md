@@ -34,6 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_record`: `comments` attribute for the record's free-text comment. When
   omitted, the provider adopts the server's comment and preserves it across updates; set
   it to `""` to clear. (#139)
+- DHCP server management: new resources `technitium_dhcp_scope` (address range,
+  lease times, DNS integration, boot/TFTP options, static routes, exclusions, inline
+  reserved leases, with in-place rename and `terraform import`) and
+  `technitium_dhcp_reserved_lease` (a single MAC-to-IP reservation, imported as
+  `<scope>::<mac>`), and new data sources `technitium_dhcp_scope`,
+  `technitium_dhcp_scopes`, and `technitium_dhcp_leases`. Based on the DHCP support
+  written by [@bartei](https://github.com/bartei) in
+  [bartei/terraform-provider-technitium](https://github.com/bartei/terraform-provider-technitium).
 
 ### Changed
 

@@ -1,0 +1,202 @@
+// Copyright (c) 2026 Stefano Bertelli
+// Copyright (c) 2026 Alex Ackerman
+// SPDX-License-Identifier: MPL-2.0
+
+package provider
+
+import (
+	"context"
+	"encoding/binary"
+	"fmt"
+	"net"
+	"strings"
+
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
+	"github.com/hashicorp/terraform-plugin-framework/resource"
+	"github.com/hashicorp/terraform-plugin-framework/types"
+)
+
+var (
+	_ resource.ResourceWithValidateConfig = &DHCPScopeResource{}
+	_ resource.ResourceWithValidateConfig = &DHCPReservedLeaseResource{}
+)
+
+// ValidateConfig checks DHCP scope addressing invariants at plan time.
+// Unknown values (interpolations not yet resolved) are skipped.
+func (r *DHCPScopeResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	// Terraform validates for_each/count resources once before expansion with
+	// every each.*/count.* reference unknown. The model's nested collections
+	// are native Go slices, which cannot represent unknown, so Config.Get
+	// would fail the whole plan with a value-conversion error. Skip instead;
+	// values this pass cannot check are rejected by the server at apply time.
+	if !req.Config.Raw.IsFullyKnown() {
+		return
+	}
+
+	var config DHCPScopeResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	start := validateIPv4Attr(config.StartingAddress, path.Root("starting_address"), &resp.Diagnostics)
+	end := validateIPv4Attr(config.EndingAddress, path.Root("ending_address"), &resp.Diagnostics)
+	validateSubnetMaskAttr(config.SubnetMask, path.Root("subnet_mask"), &resp.Diagnostics)
+
+	validateIPv4ListAttr(ctx, config.DNSServers, path.Root("dns_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.WINSServers, path.Root("wins_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.NTPServers, path.Root("ntp_servers"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.CAPWAPAcIPAddresses, path.Root("capwap_ac_ip_addresses"), &resp.Diagnostics)
+	validateIPv4ListAttr(ctx, config.TFTPServerAddresses, path.Root("tftp_server_addresses"), &resp.Diagnostics)
+
+	if start != nil && end != nil && ipv4ToUint(start) > ipv4ToUint(end) {
+		resp.Diagnostics.AddAttributeError(path.Root("starting_address"),
+			"Invalid scope range",
+			fmt.Sprintf("starting_address %s is after ending_address %s.", start, end))
+	}
+
+	for i, excl := range config.Exclusions {
+		p := path.Root("exclusions").AtListIndex(i)
+		exclStart := validateIPv4Attr(excl.StartingAddress, p.AtName("starting_address"), &resp.Diagnostics)
+		exclEnd := validateIPv4Attr(excl.EndingAddress, p.AtName("ending_address"), &resp.Diagnostics)
+		if exclStart != nil && exclEnd != nil && ipv4ToUint(exclStart) > ipv4ToUint(exclEnd) {
+			resp.Diagnostics.AddAttributeError(p.AtName("starting_address"),
+				"Invalid exclusion range",
+				fmt.Sprintf("exclusion starting_address %s is after ending_address %s.", exclStart, exclEnd))
+		}
+		if start != nil && end != nil && exclStart != nil && exclEnd != nil {
+			if ipv4ToUint(exclStart) < ipv4ToUint(start) || ipv4ToUint(exclEnd) > ipv4ToUint(end) {
+				resp.Diagnostics.AddAttributeError(p,
+					"Exclusion outside scope range",
+					fmt.Sprintf("exclusion %s-%s is not contained in the scope range %s-%s.", exclStart, exclEnd, start, end))
+			}
+		}
+	}
+
+	for i, route := range config.StaticRoutes {
+		p := path.Root("static_routes").AtListIndex(i)
+		validateIPv4Attr(route.Destination, p.AtName("destination"), &resp.Diagnostics)
+		validateSubnetMaskAttr(route.SubnetMask, p.AtName("subnet_mask"), &resp.Diagnostics)
+		validateIPv4Attr(route.Router, p.AtName("router"), &resp.Diagnostics)
+	}
+
+	for i, vi := range config.VendorInfo {
+		p := path.Root("vendor_info").AtListIndex(i)
+		validateNoPipeAttr(vi.Identifier, p.AtName("identifier"), &resp.Diagnostics)
+		validateNoPipeAttr(vi.Information, p.AtName("information"), &resp.Diagnostics)
+	}
+
+	for i, opt := range config.GenericOptions {
+		p := path.Root("generic_options").AtListIndex(i)
+		validateNoPipeAttr(opt.Value, p.AtName("value"), &resp.Diagnostics)
+	}
+
+	for i, lease := range config.ReservedLeases {
+		p := path.Root("reserved_leases").AtListIndex(i)
+		validateMACAttr(lease.HardwareAddress, p.AtName("hardware_address"), &resp.Diagnostics)
+		validateNoPipeAttr(lease.HostName, p.AtName("host_name"), &resp.Diagnostics)
+		validateNoPipeAttr(lease.Comments, p.AtName("comments"), &resp.Diagnostics)
+		addr := validateIPv4Attr(lease.Address, p.AtName("address"), &resp.Diagnostics)
+		if start != nil && end != nil && addr != nil &&
+			(ipv4ToUint(addr) < ipv4ToUint(start) || ipv4ToUint(addr) > ipv4ToUint(end)) {
+			resp.Diagnostics.AddAttributeError(p.AtName("address"),
+				"Reservation outside scope range",
+				fmt.Sprintf("reserved address %s is not contained in the scope range %s-%s.", addr, start, end))
+		}
+	}
+}
+
+// ValidateConfig checks reservation MAC and IP formats at plan time.
+func (r *DHCPReservedLeaseResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var config DHCPReservedLeaseResourceModel
+	resp.Diagnostics.Append(req.Config.Get(ctx, &config)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	validateMACAttr(config.HardwareAddress, path.Root("hardware_address"), &resp.Diagnostics)
+	validateIPv4Attr(config.IPAddress, path.Root("ip_address"), &resp.Diagnostics)
+	validateNoPipeAttr(config.HostName, path.Root("host_name"), &resp.Diagnostics)
+	validateNoPipeAttr(config.Comments, path.Root("comments"), &resp.Diagnostics)
+}
+
+// validateNoPipeAttr rejects values containing "|", the field delimiter of the
+// scopes/set wire encoding: a literal pipe would shift every later field.
+func validateNoPipeAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
+	if v.IsNull() || v.IsUnknown() {
+		return
+	}
+	if strings.Contains(v.ValueString(), "|") {
+		diags.AddAttributeError(p, "Invalid character",
+			`Value must not contain "|": it is the field delimiter in the Technitium API encoding.`)
+	}
+}
+
+// validateIPv4Attr parses a types.String as an IPv4 address in dotted-quad
+// notation, appending a diagnostic on failure. IPv6 spellings of IPv4
+// addresses (::ffff:a.b.c.d) are rejected: the wire format is dotted-quad.
+// Returns nil for null/unknown/invalid values.
+func validateIPv4Attr(v types.String, p path.Path, diags *diag.Diagnostics) net.IP {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	ip := net.ParseIP(v.ValueString())
+	if ip == nil || ip.To4() == nil || strings.Contains(v.ValueString(), ":") {
+		diags.AddAttributeError(p, "Invalid IPv4 address",
+			fmt.Sprintf("%q is not a valid IPv4 address.", v.ValueString()))
+		return nil
+	}
+	return ip.To4()
+}
+
+// validateIPv4ListAttr validates every element of a list of IPv4 addresses.
+func validateIPv4ListAttr(ctx context.Context, list types.List, p path.Path, diags *diag.Diagnostics) {
+	if list.IsNull() || list.IsUnknown() {
+		return
+	}
+	var elems []types.String
+	diags.Append(list.ElementsAs(ctx, &elems, false)...)
+	for i, e := range elems {
+		validateIPv4Attr(e, p.AtListIndex(i), diags)
+	}
+}
+
+// validateSubnetMaskAttr parses a types.String as a contiguous, non-zero IPv4 netmask.
+func validateSubnetMaskAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
+	if v.IsNull() || v.IsUnknown() {
+		return
+	}
+	ip := net.ParseIP(v.ValueString())
+	if ip == nil || ip.To4() == nil || strings.Contains(v.ValueString(), ":") {
+		diags.AddAttributeError(p, "Invalid subnet mask",
+			fmt.Sprintf("%q is not a valid IPv4 subnet mask.", v.ValueString()))
+		return
+	}
+	mask := net.IPMask(ip.To4())
+	ones, bits := mask.Size()
+	if ones == 0 && bits == 0 {
+		diags.AddAttributeError(p, "Invalid subnet mask",
+			fmt.Sprintf("%q is not a contiguous IPv4 subnet mask.", v.ValueString()))
+		return
+	}
+	if ones == 0 {
+		diags.AddAttributeError(p, "Invalid subnet mask",
+			"\"0.0.0.0\" is not a usable subnet mask.")
+	}
+}
+
+// validateMACAttr parses a types.String as a MAC address.
+func validateMACAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
+	if v.IsNull() || v.IsUnknown() {
+		return
+	}
+	if _, err := net.ParseMAC(v.ValueString()); err != nil {
+		diags.AddAttributeError(p, "Invalid MAC address",
+			fmt.Sprintf("%q is not a valid MAC address (expected e.g. 00-11-22-33-44-55).", v.ValueString()))
+	}
+}
+
+// ipv4ToUint converts a 4-byte IP to a comparable integer.
+func ipv4ToUint(ip net.IP) uint32 {
+	return binary.BigEndian.Uint32(ip.To4())
+}
