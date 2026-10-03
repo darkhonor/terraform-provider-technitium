@@ -183,11 +183,11 @@ func (r *ClusterSecondaryResource) nodeClient(ctx context.Context, model *Cluste
 	}
 	nodeClient, err := client.NewClient(cfg)
 	if err != nil {
-		return nil, fmt.Errorf("configuring client for secondary node %q: %w", model.NodeURL.ValueString(), err)
+		return nil, fmt.Errorf("configuring client for secondary node %q: %w", client.RedactURL(model.NodeURL.ValueString()), err)
 	}
 	if cfg.Token == "" {
 		if err := nodeClient.Login(ctx); err != nil {
-			return nil, fmt.Errorf("logging in to secondary node %q: %w", model.NodeURL.ValueString(), err)
+			return nil, fmt.Errorf("logging in to secondary node %q: %w", client.RedactURL(model.NodeURL.ValueString()), err)
 		}
 	}
 	return nodeClient, nil

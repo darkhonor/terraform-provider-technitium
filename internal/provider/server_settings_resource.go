@@ -262,8 +262,10 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional: true,
 			},
 			"web_service_http_to_tls_redirect": schema.BoolAttribute{
-				Description: "Redirect web service HTTP requests to HTTPS.",
-				Optional:    true,
+				Description: "Redirect web service HTTP requests to HTTPS. Once enabled, an `http://` " +
+					"`server_url` stops working: the provider refuses redirects that change scheme. " +
+					"Switch `server_url` to the `https://` address in the same change.",
+				Optional: true,
 			},
 			"web_service_use_self_signed_tls_certificate": schema.BoolAttribute{
 				Description: "Use an automatically generated self-signed certificate for the web service.",

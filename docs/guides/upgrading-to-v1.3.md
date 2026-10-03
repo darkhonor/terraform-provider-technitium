@@ -17,7 +17,7 @@ before upgrading either the provider or the server.
 |---|---|
 | Run Technitium **older than 15.0** | Set `legacy_token_auth = true` before upgrading the provider, or upgrade the server first. |
 | Have two `FWD` records in one zone with the same `value` **and** `protocol` | Rebuild them so each pair differs by `value` or `protocol`. The provider refuses to destroy or update either record until you do. |
-| Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme and host. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration. |
+| Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme and host. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration; a `technitium_cluster_secondary` `node_url` that does fails at apply. |
 | Plan to upgrade Technitium to **15.5 or later** | Review forwarder zones whose forwarders have `dnssec_validation = false`, and the comments on those records. |
 
 Everyone else can upgrade without configuration changes.

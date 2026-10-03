@@ -6,6 +6,8 @@ package validators
 import (
 	"context"
 	"strings"
+
+	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 )
 
 // ---------------------------------------------------------------------------
@@ -536,7 +538,7 @@ func validateTLSEnabled(ctx context.Context, config ConfigAccessor) bool {
 	if !ok {
 		return true
 	}
-	return strings.HasPrefix(url, "https://")
+	return client.IsHTTPSURL(url)
 }
 
 // validateTLSMinVersion checks that tls_min_version is "1.3" (SC-8).

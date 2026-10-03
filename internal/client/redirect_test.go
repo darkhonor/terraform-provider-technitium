@@ -5,6 +5,7 @@ package client
 
 import (
 	"context"
+	"crypto/tls"
 	"io"
 	"net"
 	"net/http"
@@ -207,7 +208,7 @@ func TestNewClient_UppercaseHTTPSSchemeGetsTLSConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	tr := c.httpClient.Transport.(*http.Transport)
-	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != 0x0304 {
+	if tr.TLSClientConfig == nil || tr.TLSClientConfig.MinVersion != tls.VersionTLS13 {
 		t.Errorf("HTTPS:// scheme did not get the configured TLS 1.3 minimum: %+v", tr.TLSClientConfig)
 	}
 }
@@ -232,6 +233,8 @@ func TestCheckRedirect_Table(t *testing.T) {
 		{"http://evil.test/x", false},
 		{"http://dns.example.test@evil.test/x", false},
 		{"http:///x", false},
+		{"HTTPS://dns.example.test:5380/api/x", false},
+		{"//evil.test/x", false},
 		{"http://dns.example.test.:5380/api/x", false},
 	}
 	for _, tc := range cases {
@@ -246,5 +249,24 @@ func TestCheckRedirect_Table(t *testing.T) {
 	}
 	if err := checkRedirect(mk("http://dns.example.test:5380/api/z"), via); err == nil {
 		t.Error("11th hop should be refused")
+	}
+}
+
+func TestClusterInitJoin_ErrorRedactsPrimaryNodeURL(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `{"status":"error","errorMessage":"join failed"}`)
+	}))
+	t.Cleanup(srv.Close)
+	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: "t"})
+	_, err := c.ClusterInitJoin(context.Background(), ClusterInitJoinParams{
+		PrimaryNodeURL:      "https://user:hunter2@primary.example.test:53443",
+		PrimaryNodeUsername: "admin",
+		PrimaryNodePassword: "pass",
+	})
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if strings.Contains(err.Error(), "hunter2") || strings.Contains(err.Error(), "user:") {
+		t.Errorf("error leaks primary node URL userinfo: %v", err)
 	}
 }

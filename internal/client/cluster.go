@@ -156,7 +156,7 @@ func (c *Client) ClusterInitJoin(ctx context.Context, p ClusterInitJoinParams) (
 
 	resp, err := c.doPost(ctx, "/api/admin/cluster/initJoin", params)
 	if err != nil {
-		return nil, fmt.Errorf("joining cluster at %q: %w", p.PrimaryNodeURL, err)
+		return nil, fmt.Errorf("joining cluster at %q: %w", RedactURL(p.PrimaryNodeURL), err)
 	}
 
 	var info ClusterInfo

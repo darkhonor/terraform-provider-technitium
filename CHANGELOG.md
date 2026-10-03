@@ -52,7 +52,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking: redirects.** The provider follows a redirect only when the scheme and host stay the
   same. A `server_url` that relied on an `http://` to `https://` redirect, including Technitium's
   own `web_service_http_to_tls_redirect`, now fails at provider configuration with "refusing
-  redirect from ... to ...". Set `server_url` to the final `https://` address; the TLS settings
+  redirect from ... to ...". The same applies to `technitium_cluster_secondary.node_url`, at apply
+  time. Set `server_url` (or `node_url`) to the final `https://` address; the TLS settings
   (`tls_min_version`, `ca_cert_file`, `skip_tls_verify`) were never applied on that redirected hop.
   (#147, #124)
 - **Behavior change for every configuration whose `stig_compliance` block resolves
@@ -117,8 +118,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
   proxies and access logs record them; large blocked/allowed imports no longer risk the
   server's request-line limit. A reverse proxy or WAF must allow `POST` on `/api/*`, and
-  `server_url` must name the final scheme and host: a redirected `POST` is re-sent as a
-  bodyless `GET` and fails. With `legacy_token_auth`, reads and the blocked/allowed export
+  `server_url` must name the final scheme and host: a 301/302/303 on a `POST` is re-sent as a
+  bodyless `GET` and fails, and a redirect to another scheme or host is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
   are also sent as `POST` with the token in the form body, so the token never appears in a
   URL. See the Upgrading to v1.3 guide. Verified against Technitium 15.4 and 15.5.1, and with
   `legacy_token_auth` (reads and writes) against 14.3, 15.4 and 15.5.1. (#147)

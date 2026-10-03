@@ -398,29 +398,21 @@ func (p *TechnitiumProvider) Configure(ctx context.Context, req provider.Configu
 	// Session-token authentication when no API token is configured
 	if apiToken == "" {
 		if err := apiClient.Login(ctx); err != nil {
-			isHTTPS := client.IsHTTPSURL(serverURL)
-			if isHTTPS {
-				tlsErr := client.ClassifyTLSError(err)
-				if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
-					resp.Diagnostics.AddError("TLS connection failed", diagnostic)
-					return
-				}
+			if diagnostic := tlsConnectionDiagnostic(serverURL, err, stigEnabled, nssEnabled); diagnostic != "" {
+				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+				return
 			}
 			resp.Diagnostics.AddError("Unable to log in to Technitium server",
-				fmt.Sprintf("Login to %s as %q failed: %s", client.RedactURL(serverURL), username, err.Error()))
+				loginFailureDetail(serverURL, username, err))
 			return
 		}
 	}
 
 	// Verify connectivity with tiered TLS error diagnostics
 	if err := apiClient.Ping(ctx); err != nil {
-		isHTTPS := client.IsHTTPSURL(serverURL)
-		if isHTTPS {
-			tlsErr := client.ClassifyTLSError(err)
-			if diagnostic := buildTLSDiagnostic(tlsErr, serverURL, stigEnabled, nssEnabled); diagnostic != "" {
-				resp.Diagnostics.AddError("TLS connection failed", diagnostic)
-				return
-			}
+		if diagnostic := tlsConnectionDiagnostic(serverURL, err, stigEnabled, nssEnabled); diagnostic != "" {
+			resp.Diagnostics.AddError("TLS connection failed", diagnostic)
+			return
 		}
 		resp.Diagnostics.AddError("Unable to connect to Technitium server",
 			pingFailureDetail(serverURL, err, legacyTokenAuth))
@@ -717,6 +709,17 @@ var _ validators.ConfigAccessor = &providerConfigAccessor{}
 // the provider sends by default, so every request it receives looks
 // unauthenticated and fails as invalid-token. That error alone reads as a bad
 // token; the hint names the one-line fix.
+func tlsConnectionDiagnostic(serverURL string, err error, stigEnabled, nssEnabled bool) string {
+	if !client.IsHTTPSURL(serverURL) {
+		return ""
+	}
+	return buildTLSDiagnostic(client.ClassifyTLSError(err), serverURL, stigEnabled, nssEnabled)
+}
+
+func loginFailureDetail(serverURL, username string, err error) string {
+	return fmt.Sprintf("Login to %s as %q failed: %s", client.RedactURL(serverURL), username, err.Error())
+}
+
 func pingFailureDetail(serverURL string, err error, legacyTokenAuth bool) string {
 	detail := fmt.Sprintf("Ping to %s failed: %s", client.RedactURL(serverURL), err.Error())
 	var apiErr *client.APIError

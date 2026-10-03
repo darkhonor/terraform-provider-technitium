@@ -432,8 +432,7 @@ func (c *Client) Ping(ctx context.Context) error {
 	return err
 }
 
-// checkRedirect follows a redirect only when it keeps the original request's
-// scheme and hostname (#124).
+// Redirect policy: #124.
 func checkRedirect(req *http.Request, via []*http.Request) error {
 	if len(via) >= 10 {
 		return errors.New("stopped after 10 redirects")
