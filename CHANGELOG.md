@@ -20,8 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_server_settings`: web service TLS settings.
 - TLS acceptance-test environment (`docker-compose.test.tls.yml`).
 - `legacy_token_auth` provider argument, with a `TECHNITIUM_LEGACY_TOKEN_AUTH` environment
-  variable fallback, to opt back into sending the API token as a `token` query
-  parameter/form field for Technitium DNS Server versions before 15.0 that do not support
+  variable fallback, to send every request as a `POST` with the API token in a `token` form
+  field for Technitium DNS Server versions before 15.0 that do not support
   the `Authorization: Bearer` header. Default: `false`. (GHSA-27mx-6hfq-f887)
 - `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
   acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
@@ -54,9 +54,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Breaking change for Technitium DNS Server versions before 15.0:** the API token is now sent
   as an `Authorization: Bearer` header by default, which pre-15.0 servers ignore. Every request
   then fails as `invalid-token`. Set `legacy_token_auth = true` (or export
-  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the query-parameter behavior; the provider's
+  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field instead; the provider's
   "Unable to connect" diagnostic now says so when it sees that failure under the default auth
   mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
+- **Breaking: redirects.** The provider follows a redirect only when the scheme, host, and port
+  stay the same. A `server_url` that relied on an `http://` to `https://` redirect, including
+  Technitium's own `web_service_http_to_tls_redirect`, now fails at provider configuration with
+  "refusing redirect from ... to ...". The same applies to
+  `technitium_cluster_secondary.node_url`, at apply time. Set `server_url` (or `node_url`) to the
+  final `https://` address; the TLS settings (`tls_min_version`, `ca_cert_file`,
+  `skip_tls_verify`) were never applied on that redirected hop. (#147, #124)
 - **Behavior change for every configuration whose `stig_compliance` block resolves
   `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
   never `enabled`, since enforcement defaults to `strict` whenever the block exists:
@@ -113,6 +120,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Client: every API call that writes to the server (records, zones, DNSSEC, blocked/allowed zones,
+  users, API tokens, sessions, cluster, logout) now sends its parameters as a form-encoded POST
+  body instead of a GET query string. Record values, record `comments`, and the `Sensitive` FWD
+  `proxy_password` no longer appear in request URLs, where reverse proxies and access logs record
+  them; large blocked/allowed imports no longer risk the server's request-line limit. A reverse
+  proxy or WAF must allow `POST` on `/api/*`, and `server_url` must name the final scheme, host,
+  and port: a 301/302/303 re-sends a `POST` as a bodyless `GET`, which fails for any write that
+  takes parameters, and a redirect to another scheme, host, or port is refused (see below). With
+  `legacy_token_auth`, reads and the blocked/allowed export are also sent as `POST` with the token
+  in the form body, so the token never appears in a URL. See the Upgrading to v1.3 guide. Verified
+  against Technitium 15.4 and 15.5.1, and with `legacy_token_auth` (reads and writes) against
+  14.3, 15.4 and 15.5.1. (#147)
+- Client: redirects to another scheme, host, or port are refused, so a redirect can no longer
+  carry the API token, login password, or legacy form-body token to an address `server_url` did
+  not name. URLs in errors and provider diagnostics no longer include userinfo (`user:password@`),
+  and an uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
+- Client: error text no longer echoes secrets sent in the failed request (user passwords,
+  FWD `proxy_password`, cluster join credentials, SSO client secret, TLS certificate password,
+  TSIG shared secrets) when a proxy page or error envelope repeats them, and an unparseable
+  redirect `Location` header is no longer quoted. (#147)
+- Client: an API error message that echoes the API token or login password is now redacted
+  before it reaches a Terraform diagnostic, as non-200 response bodies already were. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same
   forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
   forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying
@@ -130,20 +159,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every API call, so any HTTP intermediary that logs request URLs — a reverse proxy's access
   logs, in particular — recorded the live admin API token in cleartext. Technitium DNS Server
   15.0+ accepts the `Authorization: Bearer` header; set `legacy_token_auth = true` (or export
-  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to keep the old query-string/form behavior against an
-  older server. (GHSA-27mx-6hfq-f887)
+  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field against an older
+  server. (GHSA-27mx-6hfq-f887)
 - Transport-layer errors (DNS failure, connection refused, timeout, TLS failure) from those
-  same three call sites no longer leak the query-string token in `legacy_token_auth` mode.
+  same three call sites are rebuilt from a query-stripped URL before being returned.
   `http.Client.Do` wraps such failures in a `*url.Error` whose `Error()` method embeds the
-  full request URL, including the query string, and that string was surfacing verbatim in
-  Terraform diagnostics (e.g. "Unable to connect to Technitium server"), CI logs, and any
-  pasted support ticket. Errors are now rebuilt from a query-stripped URL before being
-  returned, on both the header and legacy query-parameter auth paths. (GHSA-27mx-6hfq-f887)
-- Request-construction failures (an unparseable `server_url`, for example) no longer leak the
-  query-string token in `legacy_token_auth` mode. `http.NewRequestWithContext` returns the same
-  `*url.Error` shape as a transport failure, embedding the raw URL, and four call sites
-  (`doGet`, `doPost`, the blocked/allowed zone export helper, and session login) wrapped it
-  verbatim. They now redact it the same way. (GHSA-27mx-6hfq-f887)
+  full request URL, including the query string, which surfaced verbatim in Terraform
+  diagnostics (e.g. "Unable to connect to Technitium server"), CI logs, and any pasted
+  support ticket; before this release that query string carried the token in
+  `legacy_token_auth` mode. (GHSA-27mx-6hfq-f887)
+- Request-construction failures (an unparseable `server_url`, for example) are redacted the
+  same way. `http.NewRequestWithContext` returns the same `*url.Error` shape as a transport
+  failure, embedding the raw URL, and four call sites (`doGet`, `doPost`, the blocked/allowed
+  zone export helper, and session login) had wrapped it verbatim. (GHSA-27mx-6hfq-f887)
 - A non-200 HTTP response body is no longer quoted verbatim into errors. Reverse-proxy and WAF
   error pages routinely echo the request URI or form body, which in `legacy_token_auth` mode
   carries the API token and on session login carries the password. The body is now scrubbed of
@@ -192,6 +220,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `technitium_catalog_membership` example declared a `dnssec` block on a `Catalog` zone,
   which is refused at plan time since #100. The block is removed; the `Primary` member zone in
   the same example keeps its own. (#116)
+- `technitium_blocked_zones` / `technitium_allowed_zones` data sources: the plain-text
+  export they read now fails on a non-200 status, a Technitium JSON error envelope (for
+  example `invalid-token`) or any other JSON body, or an HTML page, instead of returning the
+  response body as a list of domains. (#123)
 
 ### Security
 

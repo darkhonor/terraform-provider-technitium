@@ -63,7 +63,8 @@ storing plaintext values in configuration files.
 By default, the provider sends the API token via an `Authorization: Bearer` HTTP header,
 which Technitium DNS Server 15.0+ supports. This keeps the token out of the request URL, so
 it cannot end up in a reverse proxy's or load balancer's access logs. For servers older than
-15.0, which only understand the token as a `token` query parameter/form field, set
+15.0, which accept the token only as a `token` parameter (this provider sends it as a form
+field), set
 `legacy_token_auth = true` (or export `TECHNITIUM_LEGACY_TOKEN_AUTH=true`).
 
 -> **Upgrading from v1.2?** See [Upgrading to v1.3](guides/upgrading-to-v1.3.md) for the
@@ -149,8 +150,8 @@ before switching to `strict`. The plan output will identify all controls that ne
 * `api_token` - (Required, String, Sensitive) API token used to authenticate with the
   Technitium REST API. May be set via `TECHNITIUM_API_TOKEN`.
 
-* `legacy_token_auth` - (Optional, Boolean) Send the API token as a `token` query
-  parameter/form field instead of an `Authorization: Bearer` header. Only needed for
+* `legacy_token_auth` - (Optional, Boolean) Send every request as a `POST` with the API
+  token in a `token` form field instead of an `Authorization: Bearer` header. Only needed for
   Technitium DNS Server versions before 15.0, which do not support the Bearer header form.
   May be set via `TECHNITIUM_LEGACY_TOKEN_AUTH`. Default: `false`.
 

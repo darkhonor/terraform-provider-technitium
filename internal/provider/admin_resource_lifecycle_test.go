@@ -174,7 +174,8 @@ func TestAPITokenDelete_SendsStoredPartialToken(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/admin/sessions/delete", func(w http.ResponseWriter, req *http.Request) {
 		mu.Lock()
-		gotPartial = req.URL.Query().Get("partialToken")
+		_ = req.ParseForm()
+		gotPartial = req.PostForm.Get("partialToken")
 		seen = true
 		mu.Unlock()
 		_, _ = fmt.Fprint(w, `{"status":"ok","response":{}}`)

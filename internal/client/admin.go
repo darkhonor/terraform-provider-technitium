@@ -77,7 +77,7 @@ func (c *Client) UserDelete(ctx context.Context, username string) error {
 	params := url.Values{
 		"user": {username},
 	}
-	_, err := c.doGet(ctx, "/api/admin/users/delete", params)
+	_, err := c.doPost(ctx, "/api/admin/users/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting user %q: %w", username, err)
 	}
@@ -126,7 +126,7 @@ func (c *Client) CreateAPIToken(ctx context.Context, username, tokenName string)
 		"user":      {username},
 		"tokenName": {tokenName},
 	}
-	resp, err := c.doGet(ctx, "/api/admin/sessions/createToken", params)
+	resp, err := c.doPost(ctx, "/api/admin/sessions/createToken", params)
 	if err != nil {
 		return nil, fmt.Errorf("creating API token %q for user %q: %w", tokenName, username, err)
 	}
@@ -144,7 +144,7 @@ func (c *Client) SessionDelete(ctx context.Context, partialToken string) error {
 	params := url.Values{
 		"partialToken": {partialToken},
 	}
-	_, err := c.doGet(ctx, "/api/admin/sessions/delete", params)
+	_, err := c.doPost(ctx, "/api/admin/sessions/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting session %q: %w", partialToken, err)
 	}

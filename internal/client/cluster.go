@@ -98,7 +98,7 @@ func (c *Client) ClusterInit(ctx context.Context, clusterDomain string, primaryN
 		"clusterDomain":          {clusterDomain},
 		"primaryNodeIpAddresses": {strings.Join(primaryNodeIPAddresses, ",")},
 	}
-	resp, err := c.doGet(ctx, "/api/admin/cluster/init", params)
+	resp, err := c.doPost(ctx, "/api/admin/cluster/init", params)
 	if err != nil {
 		return nil, fmt.Errorf("initializing cluster %q: %w", clusterDomain, err)
 	}
@@ -117,7 +117,7 @@ func (c *Client) ClusterPrimaryDelete(ctx context.Context, force bool) error {
 	params := url.Values{
 		"forceDelete": {strconv.FormatBool(force)},
 	}
-	_, err := c.doGet(ctx, "/api/admin/cluster/primary/delete", params)
+	_, err := c.doPost(ctx, "/api/admin/cluster/primary/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting cluster: %w", err)
 	}
@@ -156,7 +156,7 @@ func (c *Client) ClusterInitJoin(ctx context.Context, p ClusterInitJoinParams) (
 
 	resp, err := c.doPost(ctx, "/api/admin/cluster/initJoin", params)
 	if err != nil {
-		return nil, fmt.Errorf("joining cluster at %q: %w", p.PrimaryNodeURL, err)
+		return nil, fmt.Errorf("joining cluster at %q: %w", RedactURL(p.PrimaryNodeURL), err)
 	}
 
 	var info ClusterInfo
@@ -169,7 +169,7 @@ func (c *Client) ClusterInitJoin(ctx context.Context, p ClusterInitJoinParams) (
 // ClusterSecondaryLeave gracefully removes the current server from the
 // cluster. This call can be made only at a Secondary node.
 func (c *Client) ClusterSecondaryLeave(ctx context.Context) error {
-	_, err := c.doGet(ctx, "/api/admin/cluster/secondary/leave", nil)
+	_, err := c.doPost(ctx, "/api/admin/cluster/secondary/leave", nil)
 	if err != nil {
 		return fmt.Errorf("leaving cluster: %w", err)
 	}
@@ -182,7 +182,7 @@ func (c *Client) ClusterRemoveSecondary(ctx context.Context, secondaryNodeID int
 	params := url.Values{
 		"secondaryNodeId": {strconv.FormatInt(secondaryNodeID, 10)},
 	}
-	_, err := c.doGet(ctx, "/api/admin/cluster/primary/removeSecondary", params)
+	_, err := c.doPost(ctx, "/api/admin/cluster/primary/removeSecondary", params)
 	if err != nil {
 		return fmt.Errorf("removing secondary node %d: %w", secondaryNodeID, err)
 	}
@@ -194,7 +194,7 @@ func (c *Client) ClusterUpdateIPAddress(ctx context.Context, ipAddresses []strin
 	params := url.Values{
 		"ipAddresses": {strings.Join(ipAddresses, ",")},
 	}
-	resp, err := c.doGet(ctx, "/api/admin/cluster/updateIpAddress", params)
+	resp, err := c.doPost(ctx, "/api/admin/cluster/updateIpAddress", params)
 	if err != nil {
 		return nil, fmt.Errorf("updating cluster node IP addresses: %w", err)
 	}

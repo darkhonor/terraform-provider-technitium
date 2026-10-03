@@ -7,7 +7,7 @@ description: |-
 
 # Upgrading to v1.3
 
-Provider v1.3 changes two behaviors that can stop an existing configuration from applying,
+Provider v1.3 changes three behaviors that can stop an existing configuration from applying,
 and it is the first release tested against **Technitium DNS Server 15.5**. Read this guide
 before upgrading either the provider or the server.
 
@@ -17,6 +17,7 @@ before upgrading either the provider or the server.
 |---|---|
 | Run Technitium **older than 15.0** | Set `legacy_token_auth = true` before upgrading the provider, or upgrade the server first. |
 | Have two `FWD` records in one zone with the same `value` **and** `protocol` | Rebuild them so each pair differs by `value` or `protocol`. The provider refuses to destroy or update either record until you do. |
+| Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme, host, and port. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration; a `technitium_cluster_secondary` `node_url` that does fails at apply. |
 | Plan to upgrade Technitium to **15.5 or later** | Review forwarder zones whose forwarders have `dnssec_validation = false`, and the comments on those records. |
 
 Everyone else can upgrade without configuration changes.
@@ -53,8 +54,10 @@ provider "technitium" {
 }
 ```
 
-~> `legacy_token_auth` restores the old behavior, including the token in request URLs. Treat
-it as a bridge while you upgrade the server, not a permanent setting.
+~> With `legacy_token_auth`, every request, reads included, is sent as a `POST` with the token
+in the form body, so the token never appears in a URL. A proxy in front of a legacy server
+must allow `POST` on `/api/*`. Treat the setting as a bridge while you upgrade the server, not
+a permanent setting.
 
 ## Change 2: forwarder records that cannot be told apart are refused
 
@@ -77,6 +80,24 @@ the pair. The steps, and the safe alternative (give the two forwarders different
 are in [DNSSEC validation on forwarders](../resources/record.md#dnssec-validation-on-forwarders).
 
 This change does not affect forwarders that already differ by `value` or `protocol`.
+
+## Change 3: writes are sent as form POSTs
+
+Every API call that changes the server (records, zones, DNSSEC, blocked and allowed zones,
+users, API tokens, sessions, cluster) now sends its parameters as a form-encoded `POST` body
+instead of a `GET` query string, so record values, comments, and FWD proxy credentials no
+longer appear in request URLs. Reads are unchanged, except with `legacy_token_auth`, where
+they are `POST` too.
+
+* A reverse proxy or WAF in front of the server must allow `POST` on `/api/*`.
+* Point `server_url` at the final scheme, host, and port. The provider follows a redirect only
+  when the scheme, host, and port stay the same (a path change). It refuses any other
+  redirect, including Technitium's own HTTP-to-HTTPS redirect, with an error naming both URLs,
+  so the token and TLS settings never go somewhere `server_url` did not name. A same-origin 301,
+  302, or 303 re-sends a write as a `GET` without its body: most writes then fail ("Parameter
+  ... missing"), but a write that takes no parameters, such as flushing the blocked or allowed
+  list, can run as a `GET`. With `legacy_token_auth` the token is in that body too, so every
+  request fails.
 
 ## Upgrading Technitium to 15.5 or later
 

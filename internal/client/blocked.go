@@ -26,19 +26,23 @@ type filteredZoneListResponse struct {
 // per line. It bypasses doGet because the export endpoint returns plain text,
 // not JSON.
 //
-// The API token is sent as an "Authorization: Bearer" header by default; set
-// c.legacyTokenAuth to fall back to the "token" query parameter for
-// Technitium DNS Server versions before 15.0.
+// The API token is sent as an "Authorization: Bearer" header by default; in
+// LegacyTokenAuth mode the request is a POST with the token as a form field.
 func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string, error) {
-	reqURL := fmt.Sprintf("%s%s", c.baseURL, path)
+	reqURL := c.baseURL + path
+	var req *http.Request
+	var err error
 	if c.legacyTokenAuth {
-		reqURL = fmt.Sprintf("%s?token=%s", reqURL, url.QueryEscape(c.token))
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(url.Values{"token": {c.token}}.Encode()))
+	} else {
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, redactRequestErr(path, err)
 	}
-	if !c.legacyTokenAuth {
+	if c.legacyTokenAuth {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	} else {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.httpClient.Do(req)
@@ -52,9 +56,25 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 		return nil, fmt.Errorf("reading response from %s: %w", path, err)
 	}
 
-	text := strings.TrimSpace(string(body))
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected HTTP status %d from %s: %s", resp.StatusCode, path, c.errorBody(body))
+	}
+
+	text := strings.TrimSpace(strings.TrimPrefix(string(body), "\ufeff"))
 	if text == "" {
 		return []string{}, nil
+	}
+	switch text[0] {
+	case '{':
+		var env APIResponse
+		if json.Unmarshal([]byte(text), &env) == nil && env.Status != "" && env.Status != "ok" {
+			return nil, &APIError{Status: env.Status, ErrorMessage: c.redactSecrets(env.ErrorMessage)}
+		}
+		return nil, fmt.Errorf("unexpected JSON response from %s: %s", path, c.errorBody(body))
+	case '[', '"':
+		return nil, fmt.Errorf("unexpected JSON response from %s: %s", path, c.errorBody(body))
+	case '<':
+		return nil, fmt.Errorf("unexpected HTML response from %s: %s", path, c.errorBody(body))
 	}
 
 	lines := strings.Split(text, "\n")
@@ -72,7 +92,7 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 func (c *Client) BlockedZoneAdd(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/blocked/add", params)
+	_, err := c.doPost(ctx, "/api/blocked/add", params)
 	if err != nil {
 		return fmt.Errorf("adding blocked zone %q: %w", domain, err)
 	}
@@ -83,7 +103,7 @@ func (c *Client) BlockedZoneAdd(ctx context.Context, domain string) error {
 func (c *Client) BlockedZoneDelete(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/blocked/delete", params)
+	_, err := c.doPost(ctx, "/api/blocked/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting blocked zone %q: %w", domain, err)
 	}
@@ -120,7 +140,7 @@ func (c *Client) BlockedZoneList(ctx context.Context) ([]string, error) {
 func (c *Client) BlockedZoneImport(ctx context.Context, domains []string) error {
 	params := url.Values{}
 	params.Set("blockedZones", strings.Join(domains, ","))
-	_, err := c.doGet(ctx, "/api/blocked/import", params)
+	_, err := c.doPost(ctx, "/api/blocked/import", params)
 	if err != nil {
 		return fmt.Errorf("importing blocked zones: %w", err)
 	}
@@ -129,7 +149,7 @@ func (c *Client) BlockedZoneImport(ctx context.Context, domains []string) error 
 
 // BlockedZoneFlush removes all domains from the blocked zone list.
 func (c *Client) BlockedZoneFlush(ctx context.Context) error {
-	_, err := c.doGet(ctx, "/api/blocked/flush", nil)
+	_, err := c.doPost(ctx, "/api/blocked/flush", nil)
 	if err != nil {
 		return fmt.Errorf("flushing blocked zones: %w", err)
 	}

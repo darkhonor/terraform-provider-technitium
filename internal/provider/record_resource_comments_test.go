@@ -75,7 +75,7 @@ func TestBuildUpdateParams_CommentsIncludingEmpty(t *testing.T) {
 	}
 }
 
-// fakeRecordServer serves one A record and records the query of every
+// fakeRecordServer serves one A record and records the form body of every
 // records/update call, so a test can assert what an update actually sent.
 type fakeRecordServer struct {
 	mu       sync.Mutex
@@ -95,7 +95,10 @@ func (f *fakeRecordServer) handler(t *testing.T) http.HandlerFunc {
 				"rData":{"ipAddress":"192.0.2.10"},"lastModified":"2026-01-01T00:00:00Z",
 				"comments":%q}]}}`, f.ttl, f.comments)
 		case "/api/zones/records/update":
-			q := req.URL.Query()
+			if err := req.ParseForm(); err != nil {
+				t.Errorf("parsing form: %v", err)
+			}
+			q := req.PostForm
 			f.updates = append(f.updates, q)
 			// Mirror Technitium: the parameter is assigned unconditionally.
 			f.comments = q.Get("comments")

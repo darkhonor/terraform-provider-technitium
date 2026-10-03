@@ -15,7 +15,7 @@ import (
 func (c *Client) AllowedZoneAdd(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/allowed/add", params)
+	_, err := c.doPost(ctx, "/api/allowed/add", params)
 	return err
 }
 
@@ -23,7 +23,7 @@ func (c *Client) AllowedZoneAdd(ctx context.Context, domain string) error {
 func (c *Client) AllowedZoneDelete(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/allowed/delete", params)
+	_, err := c.doPost(ctx, "/api/allowed/delete", params)
 	return err
 }
 
@@ -53,12 +53,12 @@ func (c *Client) AllowedZoneList(ctx context.Context) ([]string, error) {
 func (c *Client) AllowedZoneImport(ctx context.Context, domains []string) error {
 	params := url.Values{}
 	params.Set("allowedZones", strings.Join(domains, ","))
-	_, err := c.doGet(ctx, "/api/allowed/import", params)
+	_, err := c.doPost(ctx, "/api/allowed/import", params)
 	return err
 }
 
 // AllowedZoneFlush clears all entries from the allowed zone list.
 func (c *Client) AllowedZoneFlush(ctx context.Context) error {
-	_, err := c.doGet(ctx, "/api/allowed/flush", nil)
+	_, err := c.doPost(ctx, "/api/allowed/flush", nil)
 	return err
 }
