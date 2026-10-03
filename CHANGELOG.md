@@ -34,14 +34,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_record`: `comments` attribute for the record's free-text comment. When
   omitted, the provider adopts the server's comment and preserves it across updates; set
   it to `""` to clear. (#139)
-- Written by [@bartei](https://github.com/bartei) in
-  [bartei/terraform-provider-technitium](https://github.com/bartei/terraform-provider-technitium)
-  and ported onto this tree. DHCP server management: new resources
-  `technitium_dhcp_scope` (address range, lease times, DNS integration, boot/TFTP
-  options, static routes, exclusions, inline reserved leases, with in-place rename and
-  `terraform import`) and `technitium_dhcp_reserved_lease` (a single MAC-to-IP
-  reservation, imported as `<scope>::<mac>`), and new data sources
-  `technitium_dhcp_scope`, `technitium_dhcp_scopes`, and `technitium_dhcp_leases`.
+- DHCP server management: new resources `technitium_dhcp_scope` (address range,
+  lease times, DNS integration, boot/TFTP options, static routes, exclusions, inline
+  reserved leases, with in-place rename and `terraform import`) and
+  `technitium_dhcp_reserved_lease` (a single MAC-to-IP reservation, imported as
+  `<scope>::<mac>`), and new data sources `technitium_dhcp_scope`,
+  `technitium_dhcp_scopes`, and `technitium_dhcp_leases`. Based on the DHCP support
+  written by [@bartei](https://github.com/bartei) in
+  [bartei/terraform-provider-technitium](https://github.com/bartei/terraform-provider-technitium).
 
 ### Changed
 
@@ -73,22 +73,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `technitium_dhcp_scope`: a `for_each`/`count` over the resource failed every
-  plan with "Value Conversion Error ... Received unknown value". Terraform
-  validates such a block once before expansion with every `each.*`/`count.*`
-  reference unknown, and the config model's nested collections are native Go
-  slices that cannot represent unknown. ValidateConfig now skips the
-  not-fully-known pass; values it cannot check are rejected by the server at
-  apply time.
-- `technitium_dhcp_scope`: any scope update silently deleted every standalone
-  `technitium_dhcp_reserved_lease` reservation on that scope, because the
-  `reservedLeases` parameter was always sent to `/api/dhcp/scopes/set` (empty
-  when the scope declared no inline `reserved_leases`), and the server treats
-  it as the full replacement list. Terraform re-created the reservations on the
-  next apply, but they were absent server-side in between. The scope now omits
-  the parameter when the `reserved_leases` attribute is not set, leaving the
-  server-side list to the standalone resource; a declared list — including an
-  explicit empty one — still overwrites it.
 - `technitium_record`: refresh no longer aborts when the record's parent
   zone is gone ("No such zone was found"); the record is removed from state
   and planned for recreation (#88).

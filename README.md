@@ -426,12 +426,3 @@ make lint
 ## License
 
 MPL-2.0. See [LICENSE](LICENSE).
-
-Copyright is held by the project's contributors; see [AUTHORS](AUTHORS) for
-the full list. The provider was created and is maintained by Alex Ackerman
-([@darkhonor](https://github.com/darkhonor)). DHCP server management
-(`technitium_dhcp_scope`, `technitium_dhcp_reserved_lease`, and the DHCP data
-sources) was written by Stefano Bertelli
-([@bartei](https://github.com/bartei)) in
-[bartei/terraform-provider-technitium](https://github.com/bartei/terraform-provider-technitium)
-and ported onto this tree.
