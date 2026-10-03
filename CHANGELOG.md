@@ -16,21 +16,24 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
   `technitium_api_token` resources. Contributed by [@Ujstor](https://github.com/Ujstor). ([#94])
 - DHCP management: `technitium_dhcp_scope` and `technitium_dhcp_reserved_lease` resources, and
   `technitium_dhcp_scope`, `technitium_dhcp_scopes`, and `technitium_dhcp_leases` data sources.
-  Based on work by [@bartei](https://github.com/bartei). ([#150])
+  Contributed by [@dustins](https://github.com/dustins), based on work by
+  [@bartei](https://github.com/bartei). ([#150])
 - `technitium_zone`: `query_access`, `dynamic_update`, and their network ACLs. ([#89])
 - `technitium_zone`: `dnssec.change_acknowledgment`, in-place NSEC/NSEC3 conversion, and
   plan-time validation of `algorithm` and `curve`. ([#96])
-- `technitium_record`: `comments` attribute. ([#139])
+- `technitium_record`: `comments` attribute. Contributed by
+  [@pushkar-anand](https://github.com/pushkar-anand). ([#139], [#140])
 - `technitium_server_settings`: web service TLS settings. ([#94])
 - `legacy_token_auth` provider argument (`TECHNITIUM_LEGACY_TOKEN_AUTH`) for servers older than
-  15.0. (GHSA-27mx-6hfq-f887)
+  15.0. Contributed by [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
 - `AUTHORS` file and an Attribution section in `CONTRIBUTING.md`. ([#115])
 - TLS acceptance-test environment. ([#94])
 
 ### Changed
 
 - **Breaking:** the API token is sent as an `Authorization: Bearer` header. Servers older than
-  15.0 need `legacy_token_auth = true`. (GHSA-27mx-6hfq-f887)
+  15.0 need `legacy_token_auth = true`. Contributed by [@bytestrom](https://github.com/bytestrom).
+  (GHSA-27mx-6hfq-f887, [#121])
 - **Breaking:** two `FWD` records in one zone with the same `value` and `protocol` are refused.
   ([#141])
 - **Breaking:** redirects are followed only within the same scheme, host, and port; `server_url`
@@ -57,7 +60,8 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
   silently ignored (RSA: [#101]). ([#96])
 - `technitium_zone`: a `dnssec` block on a non-Primary zone is refused at plan time. ([#100])
 - `technitium_record`: refresh no longer fails when the parent zone is gone. ([#88])
-- `technitium_record`: updates no longer erase the record's comment. ([#139])
+- `technitium_record`: updates no longer erase the record's comment. Contributed by
+  [@pushkar-anand](https://github.com/pushkar-anand). ([#139], [#140])
 - `technitium_sso` and `technitium_user`: removing an attribute now clears it on the server, and
   server-side SSO `group_map` entries show as drift. ([#94])
 - `technitium_blocked_zones` / `technitium_allowed_zones` data sources: error responses are no
@@ -69,7 +73,8 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
 
 ### Security
 
-- The API token is no longer sent in request URLs. (GHSA-27mx-6hfq-f887)
+- The API token is no longer sent in request URLs. Reported and fixed by
+  [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
 - Writes are sent as `POST` form bodies, keeping record values, comments, and `proxy_password` out
   of URLs and access logs. ([#147])
 - Redirects to another scheme, host, or port are refused, so credentials cannot follow them.
@@ -94,13 +99,23 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
 - Acceptance configurations follow `TECHNITIUM_SERVER_URL` and `TECHNITIUM_CACERT`. ([#115])
 - Live-server setup is gated behind `TF_ACC`. ([#109])
 - The direct test client follows the suite's transport. ([#111])
-- Acceptance image pinned to Technitium 15.5.1. ([#133])
 
 ### Dependencies
 
-- Go toolchain and CI 1.27.1, and govulncheck for Go 1.27. ([#126], [#132])
-- `google.golang.org/grpc` 1.83.2 and `github.com/hashicorp/go-uuid` 1.0.4. ([#128], [#138])
-- GitHub Actions updates. ([#86], [#87], [#91], [#92], [#93], [#95], [#127], [#131], [#137])
+- chore(deps): update actions/checkout action to v7.0.1 ([#86])
+- chore(deps): update ossf/scorecard-action action to v2.4.4 ([#87])
+- chore(deps): update github/codeql-action action to v4.37.4 ([#91])
+- chore(deps): update github/codeql-action action to v4.37.6 ([#92])
+- chore(deps): update actions/attest-build-provenance action to v4.2.2 ([#93])
+- chore(deps): update github/codeql-action action to v4.37.7 ([#95])
+- chore(deps): upgrade Go toolchain and CI to 1.27.1 ([#126])
+- chore(deps): update github/codeql-action action to v4.37.9 ([#127])
+- chore(deps): Bump google.golang.org/grpc from 1.82.1 to 1.83.2 in the go_modules group across 1 directory ([#128])
+- chore(deps): update github/codeql-action action to v4.38.0 ([#131])
+- fix(ci): update govulncheck for Go 1.27 compatibility ([#132])
+- chore(deps): update technitium/dns-server:latest docker digest to b8efe03 ([#133])
+- chore(deps): update github/codeql-action action to v4.38.2 ([#137])
+- fix(deps): update module github.com/hashicorp/go-uuid to v1.0.4 ([#138])
 
 ## [1.2.1] - 2026-07-26
 
@@ -346,6 +361,8 @@ the new findings from blocking errors to plan-time warnings while you
 work through your zones. `"silent"` suppresses them entirely. Both
 settings preserve the validator coverage for future runs.
 
+[#140]: https://github.com/darkhonor/terraform-provider-technitium/issues/140
+[#121]: https://github.com/darkhonor/terraform-provider-technitium/issues/121
 [#88]: https://github.com/darkhonor/terraform-provider-technitium/issues/88
 [#89]: https://github.com/darkhonor/terraform-provider-technitium/issues/89
 [#94]: https://github.com/darkhonor/terraform-provider-technitium/issues/94
