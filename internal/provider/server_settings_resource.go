@@ -197,15 +197,22 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Default:     booldefault.StaticBool(true),
 			},
 			"forwarders": schema.ListAttribute{
-				Description: "List of forwarder addresses. STIG BIND-9X-001360 (SC-20).",
-				Optional:    true,
-				ElementType: types.StringType,
+				Description: "List of forwarder addresses. STIG BIND-9X-001360 (SC-20). Stored in Technitium's canonical " +
+					"form for forwarder_protocol, and the plan shows that form. When omitted, Terraform does not manage " +
+					"the server's forwarders and state shows the server's list.",
+				Optional:      true,
+				Computed:      true,
+				ElementType:   types.StringType,
+				PlanModifiers: []planmodifier.List{canonicalForwardersModifier{}},
 			},
 			"forwarder_protocol": schema.StringAttribute{
-				Description: "Forwarder transport protocol. STIG SC-8. Valid: Udp, Tcp, Tls, Https, Quic.",
-				Optional:    true,
-				Computed:    true,
-				Default:     stringdefault.StaticString("Tls"),
+				Description: "Forwarder transport protocol. STIG SC-8. Valid: Udp, Tcp, Tls, Https, Quic. Applies only when " +
+					"forwarders is set in the same configuration.",
+				Optional:      true,
+				Computed:      true,
+				Default:       stringdefault.StaticString("Tls"),
+				Validators:    []validator.String{stringvalidator.OneOf("Udp", "Tcp", "Tls", "Https", "Quic")},
+				PlanModifiers: []planmodifier.String{forwarderProtocolModifier{}},
 			},
 			"enable_dns_over_tls": schema.BoolAttribute{
 				Description: "Enable DNS-over-TLS listener. STIG SC-8.",
@@ -339,14 +346,17 @@ func (r *ServerSettingsResource) ConfigValidators(ctx context.Context) []resourc
 func (r *ServerSettingsResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ServerSettingsResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var configForwarders types.List
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("forwarders"), &configForwarders)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	plan.ID = types.StringValue("server-settings")
+	planned := plan
 
-	// Apply settings
 	params := r.buildParams(ctx, &plan)
+	omitUnmanagedForwarders(params, configForwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error setting server settings", err.Error())
@@ -354,10 +364,15 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 		}
 	}
 
-	// Read back
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
+	}
+	if configForwarders.IsNull() {
+		checkUnmanagedForwarders(&planned, &plan, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -381,11 +396,15 @@ func (r *ServerSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 func (r *ServerSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan ServerSettingsResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
+	var configForwarders types.List
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("forwarders"), &configForwarders)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	planned := plan
 
 	params := r.buildParams(ctx, &plan)
+	omitUnmanagedForwarders(params, configForwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error updating server settings", err.Error())
@@ -397,6 +416,12 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
+	}
+	if configForwarders.IsNull() {
+		checkUnmanagedForwarders(&planned, &plan, &resp.Diagnostics)
+		if resp.Diagnostics.HasError() {
+			return
+		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -514,7 +539,11 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	readStringList(ctx, &model.BlockingBypassList, settings.BlockingBypassList)
 	readStringList(ctx, &model.CustomBlockingAddresses, settings.CustomBlockingAddresses)
 	readStringList(ctx, &model.BlockListUrls, settings.BlockListUrls)
-	readStringList(ctx, &model.Forwarders, settings.Forwarders)
+	forwarders := settings.Forwarders
+	if forwarders == nil {
+		forwarders = []string{}
+	}
+	model.Forwarders, _ = types.ListValueFrom(ctx, types.StringType, forwarders)
 	readStringList(ctx, &model.ZoneTransferAllowedNetworks, settings.ZoneTransferAllowedNetworks)
 	readStringList(ctx, &model.NotifyAllowedNetworks, settings.NotifyAllowedNetworks)
 
