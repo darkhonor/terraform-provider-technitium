@@ -105,6 +105,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
+- Client: every API call that writes to the server (records, zones, DNSSEC, blocked/allowed
+  zones, users, API tokens, sessions, cluster, logout) now sends its parameters as a
+  form-encoded POST body instead of a GET query string. Record values, record `comments`,
+  and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
+  proxies and access logs record them; large blocked/allowed imports no longer risk the
+  server's request-line limit. Verified against Technitium 15.4 and 15.5.1, and with
+  `legacy_token_auth` against 14.3. (#147)
 - `technitium_record`: the documentation recommended telling two `FWD` records to the same
   forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
   forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying
@@ -184,6 +191,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The `technitium_catalog_membership` example declared a `dnssec` block on a `Catalog` zone,
   which is refused at plan time since #100. The block is removed; the `Primary` member zone in
   the same example keeps its own. (#116)
+- `technitium_blocked_zones` / `technitium_allowed_zones` data sources: the plain-text
+  export they read now fails on a non-200 status, a Technitium JSON error envelope (for
+  example `invalid-token`), or an HTML page, instead of returning the response body as a
+  list of domains. (#123)
 
 ### Security
 
