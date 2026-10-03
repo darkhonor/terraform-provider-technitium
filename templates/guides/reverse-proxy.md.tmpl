@@ -36,9 +36,9 @@ the whole list in one request (about 1.7 MB for 60,000 domains).
 | Allow `GET` and `POST` on `/api/*` | `unexpected HTTP status 403` on writes and session login (default mode), or on every request (`legacy_token_auth`) |
 | Pass the `Authorization` header to Technitium unchanged | `technitium API error (status=invalid-token)` (default mode) |
 | Accept request bodies large enough for your largest list import | `unexpected HTTP status 413` on import |
-| Allow upstream requests to take at least as long as the provider waits (30 seconds; 300 for a cluster join) | `Client.Timeout exceeded`, or an HTTP 504 from the proxy |
+| Allow upstream requests to take at least as long as the provider waits (30 seconds) | an error containing `Client.Timeout`, or an HTTP 504 from the proxy |
 | Offer TLS 1.3 | "TLS 1.3 not supported by the server" |
-| Route on the host name in `server_url` and serve a certificate for it | "server certificate signed by unknown authority" (the proxy's default certificate), or `unexpected HTTP status 404` |
+| Route on the host name in `server_url` and serve a certificate for it | "server certificate verification failed" (certificate does not cover the name), "server certificate signed by unknown authority" (a self-signed default certificate), or `unexpected HTTP status 404` |
 
 Also:
 
@@ -59,9 +59,10 @@ Also:
   TLS (SNI and certificate checks), not the HTTP `Host` header. A proxy that routes by host name
   (a Traefik `Host()` rule, several nginx `server_name` blocks) needs `server_url` to carry that
   name; an IP address in `server_url` reaches the default route or certificate.
-* **Keep TLS 1.3.** The provider requires TLS 1.3 by default. `tls_min_version = "1.2"` is
-  reported by DNS-REQ-028 when `stig_compliance` is enabled and is refused when `nss = true`; see
-  the [STIG compliance guide](stig-compliance.md). Enable TLS 1.3 on the proxy instead.
+* **Keep TLS 1.3.** The provider requires TLS 1.3 by default. With `stig_compliance` enabled,
+  `tls_min_version = "1.2"` is a DNS-REQ-028 finding, which blocks the run under the default
+  `strict` enforcement; see the [STIG compliance guide](stig-compliance.md). Enable TLS 1.3 on the
+  proxy instead.
 
 ## Redirects
 
@@ -129,8 +130,8 @@ server {
 
 nginx passes the `Authorization` header through by default. Its default
 `client_max_body_size` is 1 MB, which a large blocked or allowed list import exceeds. The two
-60-second timeouts are nginx's defaults, shown because a cluster join can need up to
-`join_timeout_seconds` (300 by default).
+60-second timeouts are nginx's defaults and cover the provider's 30-second wait. A proxy in front
+of a cluster secondary's `node_url` needs at least `join_timeout_seconds` (300 by default).
 
 ## Example: Traefik
 
@@ -193,10 +194,12 @@ list import.
 
 * waits up to `join_timeout_seconds` (default 300) instead of 30 seconds, so a proxy in front of
   the secondary needs an upstream timeout at least that long;
-* requires TLS 1.3 and trusts the system certificate store, or skips verification with
-  `node_skip_tls_verify`. The provider's `ca_cert_file`, `ca_cert_dir`, `tls_server_name`, and
-  `tls_min_version` do not apply to it;
-* sends the primary node's credentials (`primary_node_password`, and a TOTP code when set) in the
+* over `https://`, requires TLS 1.3 and trusts the system certificate store, or skips verification
+  with `node_skip_tls_verify`;
+* always sends the token or session in the `Authorization` header, so the proxy must pass it;
+* ignores the provider's `ca_cert_file`, `ca_cert_dir`, `tls_server_name`, `tls_min_version`,
+  and `legacy_token_auth`;
+* sends the primary node's credentials (`primary_node_username`, `primary_node_password`) in the
   join request body;
 * follows the same redirect rules: `node_url` must be the final address.
 
@@ -211,9 +214,10 @@ list import.
 | `unexpected HTTP status 403 on login` | Session login (`username`/`password`) is a `POST`; allow it on `/api/user/login`. |
 | `unexpected HTTP status 404` | The proxy did not match the host or path; check that `server_url` uses the routed host name and `/api/` reaches Technitium. |
 | `unexpected HTTP status 502` or `504` | The proxy cannot reach Technitium, or its upstream timeout is shorter than the request. |
-| `Client.Timeout exceeded` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for a cluster join). |
+| An error containing `Client.Timeout` | Technitium or the proxy took longer than the provider waits (30 seconds; `join_timeout_seconds` for a cluster join). |
 | `TLS 1.3 not supported by the server` | The proxy offers only TLS 1.2 (enable TLS 1.3), or `server_url` uses `https://` against a plain-HTTP port. |
-| Certificate signed by unknown authority | The proxy certificate is from a private CA (set `ca_cert_file` or `ca_cert_dir`), or `server_url` uses an IP address and gets the proxy's default certificate (use the routed host name). |
+| Certificate signed by unknown authority | The proxy certificate is from a private CA (set `ca_cert_file` or `ca_cert_dir`), or `server_url` uses an IP address and gets a self-signed default certificate (use the routed host name). |
+| Server certificate verification failed | The certificate does not cover the name in `server_url`, for example an IP address; use a host name the certificate covers. |
 | `Parameter '...' missing.` on writes | A same-origin 301/302/303 dropped the request body. |
 
 See also [Upgrading to v1.3](upgrading-to-v1.3.md) for the transport changes behind these rules.
