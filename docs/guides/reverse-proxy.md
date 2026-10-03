@@ -59,10 +59,10 @@ Also:
   TLS (SNI and certificate checks), not the HTTP `Host` header. A proxy that routes by host name
   (a Traefik `Host()` rule, several nginx `server_name` blocks) needs `server_url` to carry that
   name; an IP address in `server_url` reaches the default route or certificate.
-* **Match the TLS version.** The provider requires TLS 1.3 by default. If the proxy offers only
-  TLS 1.2, set `tls_min_version = "1.2"`. With `stig_compliance` enabled this can raise
-  DNS-REQ-028; the [STIG compliance guide](stig-compliance.md) explains when that requirement
-  applies.
+* **Prefer TLS 1.3.** The provider requires TLS 1.3 by default; enable it on the proxy wherever
+  the proxy supports it. TLS 1.2 remains supported: if the proxy offers only TLS 1.2, set
+  `tls_min_version = "1.2"`. With `stig_compliance` enabled this can raise DNS-REQ-028; the
+  [STIG compliance guide](stig-compliance.md) explains when that requirement applies.
 
 ## Redirects
 
