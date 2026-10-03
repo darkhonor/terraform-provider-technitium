@@ -50,12 +50,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   "Unable to connect" diagnostic now says so when it sees that failure under the default auth
   mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
 - **Breaking: redirects.** The provider follows a redirect only when the scheme, host, and port
-  stay the same. A `server_url` that relied on an `http://` to `https://` redirect, including Technitium's
-  own `web_service_http_to_tls_redirect`, now fails at provider configuration with "refusing
-  redirect from ... to ...". The same applies to `technitium_cluster_secondary.node_url`, at apply
-  time. Set `server_url` (or `node_url`) to the final `https://` address; the TLS settings
-  (`tls_min_version`, `ca_cert_file`, `skip_tls_verify`) were never applied on that redirected hop.
-  (#147, #124)
+  stay the same. A `server_url` that relied on an `http://` to `https://` redirect, including
+  Technitium's own `web_service_http_to_tls_redirect`, now fails at provider configuration with
+  "refusing redirect from ... to ...". The same applies to
+  `technitium_cluster_secondary.node_url`, at apply time. Set `server_url` (or `node_url`) to the
+  final `https://` address; the TLS settings (`tls_min_version`, `ca_cert_file`,
+  `skip_tls_verify`) were never applied on that redirected hop. (#147, #124)
 - **Behavior change for every configuration whose `stig_compliance` block resolves
   `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
   never `enabled`, since enforcement defaults to `strict` whenever the block exists:
@@ -112,22 +112,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Security
 
-- Client: every API call that writes to the server (records, zones, DNSSEC, blocked/allowed
-  zones, users, API tokens, sessions, cluster, logout) now sends its parameters as a
-  form-encoded POST body instead of a GET query string. Record values, record `comments`,
-  and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
-  proxies and access logs record them; large blocked/allowed imports no longer risk the
-  server's request-line limit. A reverse proxy or WAF must allow `POST` on `/api/*`, and
-  `server_url` must name the final scheme, host, and port: a 301/302/303 re-sends a `POST` as a
-  bodyless `GET`, which fails for any write that takes parameters, and a redirect to another
-  scheme, host, or port is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
-  are also sent as `POST` with the token in the form body, so the token never appears in a
-  URL. See the Upgrading to v1.3 guide. Verified against Technitium 15.4 and 15.5.1, and with
-  `legacy_token_auth` (reads and writes) against 14.3, 15.4 and 15.5.1. (#147)
-- Client: redirects to another scheme, host, or port are refused, so a redirect can no longer carry the
-  API token, login password, or legacy form-body token to an address `server_url` did not name.
-  URLs in errors and provider diagnostics no longer include userinfo (`user:password@`), and an
-  uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
+- Client: every API call that writes to the server (records, zones, DNSSEC, blocked/allowed zones,
+  users, API tokens, sessions, cluster, logout) now sends its parameters as a form-encoded POST
+  body instead of a GET query string. Record values, record `comments`, and the `Sensitive` FWD
+  `proxy_password` no longer appear in request URLs, where reverse proxies and access logs record
+  them; large blocked/allowed imports no longer risk the server's request-line limit. A reverse
+  proxy or WAF must allow `POST` on `/api/*`, and `server_url` must name the final scheme, host,
+  and port: a 301/302/303 re-sends a `POST` as a bodyless `GET`, which fails for any write that
+  takes parameters, and a redirect to another scheme, host, or port is refused (see below). With
+  `legacy_token_auth`, reads and the blocked/allowed export are also sent as `POST` with the token
+  in the form body, so the token never appears in a URL. See the Upgrading to v1.3 guide. Verified
+  against Technitium 15.4 and 15.5.1, and with `legacy_token_auth` (reads and writes) against
+  14.3, 15.4 and 15.5.1. (#147)
+- Client: redirects to another scheme, host, or port are refused, so a redirect can no longer
+  carry the API token, login password, or legacy form-body token to an address `server_url` did
+  not name. URLs in errors and provider diagnostics no longer include userinfo (`user:password@`),
+  and an uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
 - Client: error text no longer echoes secrets sent in the failed request (user passwords,
   FWD `proxy_password`, cluster join credentials, SSO client secret, TLS certificate password,
   TSIG shared secrets) when a proxy page or error envelope repeats them, and an unparseable

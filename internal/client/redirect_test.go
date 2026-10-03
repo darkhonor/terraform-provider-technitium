@@ -281,6 +281,7 @@ func TestCheckRedirect_Table(t *testing.T) {
 		{"http://dns.example.test/api/x", "http://dns.example.test:80/api/y", true},
 		{"https://dns.example.test:443/api/x", "https://dns.example.test/api/y", true},
 		{"https://dns.example.test/api/x", "https://dns.example.test:8443/api/y", false},
+		{"https://[::1]/api/x", "https://[::1]:443/api/y", true},
 	} {
 		err := checkRedirect(mk(tc.target), []*http.Request{mk(tc.orig)})
 		if (err == nil) != tc.allow {

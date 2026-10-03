@@ -476,7 +476,7 @@ func effectivePort(u *url.URL) string {
 	if p := u.Port(); p != "" {
 		return p
 	}
-	switch strings.ToLower(u.Scheme) {
+	switch u.Scheme {
 	case "https":
 		return "443"
 	case "http":
