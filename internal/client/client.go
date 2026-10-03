@@ -449,7 +449,7 @@ func checkRedirect(req *http.Request, via []*http.Request) error {
 		return errors.New("stopped after 10 redirects")
 	}
 	orig := via[0].URL
-	if req.URL.Scheme != orig.Scheme || !strings.EqualFold(req.URL.Hostname(), orig.Hostname()) {
+	if req.URL.Scheme != orig.Scheme || !strings.EqualFold(req.URL.Hostname(), orig.Hostname()) || effectivePort(req.URL) != effectivePort(orig) {
 		return fmt.Errorf("refusing redirect from %s to %s: set server_url to the final address",
 			redactURL(orig.String()), redactURL(req.URL.String()))
 	}
@@ -470,4 +470,17 @@ func requestSecrets(params url.Values) []string {
 		}
 	}
 	return out
+}
+
+func effectivePort(u *url.URL) string {
+	if p := u.Port(); p != "" {
+		return p
+	}
+	switch strings.ToLower(u.Scheme) {
+	case "https":
+		return "443"
+	case "http":
+		return "80"
+	}
+	return ""
 }

@@ -49,8 +49,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field instead; the provider's
   "Unable to connect" diagnostic now says so when it sees that failure under the default auth
   mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
-- **Breaking: redirects.** The provider follows a redirect only when the scheme and host stay the
-  same. A `server_url` that relied on an `http://` to `https://` redirect, including Technitium's
+- **Breaking: redirects.** The provider follows a redirect only when the scheme, host, and port
+  stay the same. A `server_url` that relied on an `http://` to `https://` redirect, including Technitium's
   own `web_service_http_to_tls_redirect`, now fails at provider configuration with "refusing
   redirect from ... to ...". The same applies to `technitium_cluster_secondary.node_url`, at apply
   time. Set `server_url` (or `node_url`) to the final `https://` address; the TLS settings
@@ -118,13 +118,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   and the `Sensitive` FWD `proxy_password` no longer appear in request URLs, where reverse
   proxies and access logs record them; large blocked/allowed imports no longer risk the
   server's request-line limit. A reverse proxy or WAF must allow `POST` on `/api/*`, and
-  `server_url` must name the final scheme and host: a 301/302/303 re-sends a `POST` as a
+  `server_url` must name the final scheme, host, and port: a 301/302/303 re-sends a `POST` as a
   bodyless `GET`, which fails for any write that takes parameters, and a redirect to another
-  scheme or host is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
+  scheme, host, or port is refused (see below). With `legacy_token_auth`, reads and the blocked/allowed export
   are also sent as `POST` with the token in the form body, so the token never appears in a
   URL. See the Upgrading to v1.3 guide. Verified against Technitium 15.4 and 15.5.1, and with
   `legacy_token_auth` (reads and writes) against 14.3, 15.4 and 15.5.1. (#147)
-- Client: redirects to another host or scheme are refused, so a redirect can no longer carry the
+- Client: redirects to another scheme, host, or port are refused, so a redirect can no longer carry the
   API token, login password, or legacy form-body token to an address `server_url` did not name.
   URLs in errors and provider diagnostics no longer include userinfo (`user:password@`), and an
   uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)

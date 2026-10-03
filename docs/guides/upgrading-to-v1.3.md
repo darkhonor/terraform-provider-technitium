@@ -17,7 +17,7 @@ before upgrading either the provider or the server.
 |---|---|
 | Run Technitium **older than 15.0** | Set `legacy_token_auth = true` before upgrading the provider, or upgrade the server first. |
 | Have two `FWD` records in one zone with the same `value` **and** `protocol` | Rebuild them so each pair differs by `value` or `protocol`. The provider refuses to destroy or update either record until you do. |
-| Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme and host. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration; a `technitium_cluster_secondary` `node_url` that does fails at apply. |
+| Reach the server through a reverse proxy, WAF, or a `server_url` that redirects | Allow `POST` with form bodies on `/api/*`, and set `server_url` to the final scheme, host, and port. A `server_url` that only works by following an `http://` to `https://` redirect, including Technitium's own, now fails at provider configuration; a `technitium_cluster_secondary` `node_url` that does fails at apply. |
 | Plan to upgrade Technitium to **15.5 or later** | Review forwarder zones whose forwarders have `dnssec_validation = false`, and the comments on those records. |
 
 Everyone else can upgrade without configuration changes.
@@ -90,8 +90,8 @@ longer appear in request URLs. Reads are unchanged, except with `legacy_token_au
 they are `POST` too.
 
 * A reverse proxy or WAF in front of the server must allow `POST` on `/api/*`.
-* Point `server_url` at the final scheme and host. The provider follows a redirect only when
-  the scheme and host stay the same (for example, a port or path change). It refuses any other
+* Point `server_url` at the final scheme, host, and port. The provider follows a redirect only
+  when the scheme, host, and port stay the same (a path change). It refuses any other
   redirect, including Technitium's own HTTP-to-HTTPS redirect, with an error naming both URLs,
   so the token and TLS settings never go somewhere `server_url` did not name. A same-host 301,
   302, or 303 re-sends a write as a `GET` without its body: most writes then fail ("Parameter

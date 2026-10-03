@@ -75,7 +75,7 @@ func redirector(t *testing.T, useTLS bool, code int, target func() string) *http
 	return s
 }
 
-func TestRedirect_SameSchemeAndHostOtherPortIsFollowed(t *testing.T) {
+func TestRedirect_OtherPortIsRefused(t *testing.T) {
 	for _, legacy := range []bool{false, true} {
 		b := newRecordingServer(t, nil, false, okResponder)
 		a := redirector(t, false, http.StatusTemporaryRedirect, func() string { return b.URL })
@@ -83,15 +83,52 @@ func TestRedirect_SameSchemeAndHostOtherPortIsFollowed(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		if _, err := c.doPost(context.Background(), "/api/zones/delete", url.Values{"zone": {"example.test"}}); err == nil {
+			t.Fatalf("legacy=%v: expected the other-port redirect to be refused", legacy)
+		}
+		if n := b.conns.Load(); n != 0 {
+			t.Errorf("legacy=%v: other-port target received %d connections", legacy, n)
+		}
+	}
+}
+
+func sameOriginServer(t *testing.T, code int, target func(form url.Values) bool) *recordingServer {
+	t.Helper()
+	var rs *recordingServer
+	rs = newRecordingServer(t, nil, false, func(w http.ResponseWriter, form url.Values) {
+		rs.mu.Lock()
+		last := rs.requests[len(rs.requests)-1]
+		rs.mu.Unlock()
+		if last.path == "/api/zones/delete" {
+			w.Header().Set("Location", "/api/target")
+			w.WriteHeader(code)
+			return
+		}
+		if target(form) {
+			_, _ = io.WriteString(w, `{"status":"ok","response":{}}`)
+			return
+		}
+		_, _ = io.WriteString(w, `{"status":"error","errorMessage":"Parameter 'zone' missing."}`)
+	})
+	return rs
+}
+
+func TestRedirect_SameOriginOtherPathIsFollowed(t *testing.T) {
+	for _, legacy := range []bool{false, true} {
+		s := sameOriginServer(t, http.StatusTemporaryRedirect, func(form url.Values) bool { return form.Get("zone") != "" })
+		c, err := NewClient(ClientConfig{BaseURL: s.URL, Token: "tok", LegacyTokenAuth: legacy})
+		if err != nil {
+			t.Fatal(err)
+		}
 		if _, err := c.doPost(context.Background(), "/api/zones/delete", url.Values{"zone": {"example.test"}}); err != nil {
 			t.Fatalf("legacy=%v: %v", legacy, err)
 		}
-		if len(b.requests) != 1 {
-			t.Fatalf("legacy=%v: target requests = %d, want 1", legacy, len(b.requests))
+		if len(s.requests) != 2 {
+			t.Fatalf("legacy=%v: requests = %d, want 2", legacy, len(s.requests))
 		}
-		r := b.requests[0]
-		if r.method != http.MethodPost || r.form.Get("zone") != "example.test" {
-			t.Errorf("legacy=%v: target saw %s with form %v", legacy, r.method, r.form)
+		r := s.requests[1]
+		if r.path != "/api/target" || r.method != http.MethodPost || r.form.Get("zone") != "example.test" {
+			t.Errorf("legacy=%v: followed hop = %s %s form %v", legacy, r.method, r.path, r.form)
 		}
 		if legacy && r.form.Get("token") != "tok" {
 			t.Errorf("legacy token did not arrive on the followed hop")
@@ -176,23 +213,16 @@ func TestRedirect_SchemeDowngradeIsRefused(t *testing.T) {
 }
 
 func TestRedirect_302OnWriteBecomesBodylessGET(t *testing.T) {
-	b := newRecordingServer(t, nil, false, func(w http.ResponseWriter, form url.Values) {
-		if len(form) == 0 {
-			_, _ = io.WriteString(w, `{"status":"error","errorMessage":"Parameter 'zone' missing."}`)
-			return
-		}
-		_, _ = io.WriteString(w, `{"status":"ok","response":{}}`)
-	})
-	a := redirector(t, false, http.StatusFound, func() string { return b.URL })
-	c, _ := NewClient(ClientConfig{BaseURL: a.URL, Token: "tok"})
+	s := sameOriginServer(t, http.StatusFound, func(form url.Values) bool { return len(form) > 0 })
+	c, _ := NewClient(ClientConfig{BaseURL: s.URL, Token: "tok"})
 	if _, err := c.doPost(context.Background(), "/api/zones/delete", url.Values{"zone": {"x"}}); err == nil {
 		t.Fatal("expected the redirected write to fail")
 	}
-	if len(b.requests) != 1 {
-		t.Fatalf("target requests = %d, want 1", len(b.requests))
+	if len(s.requests) != 2 {
+		t.Fatalf("requests = %d, want 2", len(s.requests))
 	}
-	if r := b.requests[0]; r.method != http.MethodGet || b.bodies[0] != "" || r.auth != "Bearer tok" {
-		t.Errorf("target saw method=%s body=%q auth=%q, want GET, empty body, Bearer kept", r.method, b.bodies[0], r.auth)
+	if r := s.requests[1]; r.method != http.MethodGet || s.bodies[1] != "" || r.auth != "Bearer tok" {
+		t.Errorf("followed hop method=%s body=%q auth=%q, want GET, empty body, Bearer kept", r.method, s.bodies[1], r.auth)
 	}
 }
 
@@ -227,7 +257,7 @@ func TestCheckRedirect_Table(t *testing.T) {
 		allow  bool
 	}{
 		{"http://dns.example.test:5380/api/y", true},
-		{"http://dns.example.test:8080/api/x", true},
+		{"http://dns.example.test:8080/api/x", false},
 		{"http://DNS.EXAMPLE.TEST:5380/api/x", true},
 		{"https://dns.example.test:53443/api/x", false},
 		{"http://evil.test/x", false},
@@ -241,6 +271,20 @@ func TestCheckRedirect_Table(t *testing.T) {
 		err := checkRedirect(mk(tc.target), []*http.Request{orig})
 		if (err == nil) != tc.allow {
 			t.Errorf("%s: allowed=%v, want %v (err=%v)", tc.target, err == nil, tc.allow, err)
+		}
+	}
+	for _, tc := range []struct {
+		orig, target string
+		allow        bool
+	}{
+		{"https://dns.example.test/api/x", "https://dns.example.test:443/api/y", true},
+		{"http://dns.example.test/api/x", "http://dns.example.test:80/api/y", true},
+		{"https://dns.example.test:443/api/x", "https://dns.example.test/api/y", true},
+		{"https://dns.example.test/api/x", "https://dns.example.test:8443/api/y", false},
+	} {
+		err := checkRedirect(mk(tc.target), []*http.Request{mk(tc.orig)})
+		if (err == nil) != tc.allow {
+			t.Errorf("%s -> %s: allowed=%v, want %v (err=%v)", tc.orig, tc.target, err == nil, tc.allow, err)
 		}
 	}
 	via := make([]*http.Request, 10)
