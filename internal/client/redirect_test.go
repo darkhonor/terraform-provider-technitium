@@ -122,7 +122,7 @@ func TestRedirect_CrossHostIsRefused(t *testing.T) {
 	}
 	for name, call := range calls {
 		t.Run(name, func(t *testing.T) {
-			l, err := net.Listen("tcp", "127.0.0.2:0")
+			l, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.2:0")
 			if err != nil {
 				t.Skipf("127.0.0.2 not available (macOS: ifconfig lo0 alias 127.0.0.2): %v", err)
 			}
