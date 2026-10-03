@@ -72,7 +72,7 @@ func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string,
 func (c *Client) BlockedZoneAdd(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/blocked/add", params)
+	_, err := c.doPost(ctx, "/api/blocked/add", params)
 	if err != nil {
 		return fmt.Errorf("adding blocked zone %q: %w", domain, err)
 	}
@@ -83,7 +83,7 @@ func (c *Client) BlockedZoneAdd(ctx context.Context, domain string) error {
 func (c *Client) BlockedZoneDelete(ctx context.Context, domain string) error {
 	params := url.Values{}
 	params.Set("domain", domain)
-	_, err := c.doGet(ctx, "/api/blocked/delete", params)
+	_, err := c.doPost(ctx, "/api/blocked/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting blocked zone %q: %w", domain, err)
 	}
@@ -120,7 +120,7 @@ func (c *Client) BlockedZoneList(ctx context.Context) ([]string, error) {
 func (c *Client) BlockedZoneImport(ctx context.Context, domains []string) error {
 	params := url.Values{}
 	params.Set("blockedZones", strings.Join(domains, ","))
-	_, err := c.doGet(ctx, "/api/blocked/import", params)
+	_, err := c.doPost(ctx, "/api/blocked/import", params)
 	if err != nil {
 		return fmt.Errorf("importing blocked zones: %w", err)
 	}
@@ -129,7 +129,7 @@ func (c *Client) BlockedZoneImport(ctx context.Context, domains []string) error 
 
 // BlockedZoneFlush removes all domains from the blocked zone list.
 func (c *Client) BlockedZoneFlush(ctx context.Context) error {
-	_, err := c.doGet(ctx, "/api/blocked/flush", nil)
+	_, err := c.doPost(ctx, "/api/blocked/flush", nil)
 	if err != nil {
 		return fmt.Errorf("flushing blocked zones: %w", err)
 	}

@@ -83,6 +83,86 @@ func mutationCases(ctx context.Context) []mutationCase {
 			func(c *Client) error {
 				return c.RecordDelete(ctx, "h.example.test", "example.test", "A", map[string]string{"ipAddress": "192.0.2.1"})
 			}},
+		{"ZoneCreate", "/api/zones/create",
+			map[string]string{"zone": "example.test", "type": "Primary"},
+			func(c *Client) error { _, err := c.ZoneCreate(ctx, "example.test", "Primary", false); return err }},
+		{"ZoneDelete", "/api/zones/delete",
+			map[string]string{"zone": "example.test"},
+			func(c *Client) error { return c.ZoneDelete(ctx, "example.test") }},
+		{"ZoneOptionsSet", "/api/zones/options/set",
+			map[string]string{"zone": "example.test", "queryAccess": "Deny"},
+			func(c *Client) error {
+				return c.ZoneOptionsSet(ctx, "example.test", map[string]string{"queryAccess": "Deny"})
+			}},
+		{"ZoneDNSSECSign", "/api/zones/dnssec/sign",
+			map[string]string{"zone": "example.test", "algorithm": "ECDSA", "curve": "P256", "nxProof": "NSEC"},
+			func(c *Client) error { return c.ZoneDNSSECSign(ctx, "example.test", "ECDSA", "P256", "NSEC") }},
+		{"ZoneDNSSECUnsign", "/api/zones/dnssec/unsign",
+			map[string]string{"zone": "example.test"},
+			func(c *Client) error { return c.ZoneDNSSECUnsign(ctx, "example.test") }},
+		{"ZoneDNSSECConvertNxProof/NSEC", "/api/zones/dnssec/properties/convertToNSEC",
+			map[string]string{"zone": "example.test"},
+			func(c *Client) error { return c.ZoneDNSSECConvertNxProof(ctx, "example.test", "NSEC") }},
+		{"ZoneDNSSECConvertNxProof/NSEC3", "/api/zones/dnssec/properties/convertToNSEC3",
+			map[string]string{"zone": "example.test", "iterations": "0", "saltLength": "0"},
+			func(c *Client) error { return c.ZoneDNSSECConvertNxProof(ctx, "example.test", "NSEC3") }},
+		{"BlockedZoneAdd", "/api/blocked/add",
+			map[string]string{"domain": "bad.example.test"},
+			func(c *Client) error { return c.BlockedZoneAdd(ctx, "bad.example.test") }},
+		{"BlockedZoneDelete", "/api/blocked/delete",
+			map[string]string{"domain": "bad.example.test"},
+			func(c *Client) error { return c.BlockedZoneDelete(ctx, "bad.example.test") }},
+		{"BlockedZoneImport", "/api/blocked/import",
+			map[string]string{"blockedZones": "a.example.test,b.example.test"},
+			func(c *Client) error {
+				return c.BlockedZoneImport(ctx, []string{"a.example.test", "b.example.test"})
+			}},
+		{"BlockedZoneFlush", "/api/blocked/flush", nil,
+			func(c *Client) error { return c.BlockedZoneFlush(ctx) }},
+		{"AllowedZoneAdd", "/api/allowed/add",
+			map[string]string{"domain": "ok.example.test"},
+			func(c *Client) error { return c.AllowedZoneAdd(ctx, "ok.example.test") }},
+		{"AllowedZoneDelete", "/api/allowed/delete",
+			map[string]string{"domain": "ok.example.test"},
+			func(c *Client) error { return c.AllowedZoneDelete(ctx, "ok.example.test") }},
+		{"AllowedZoneImport", "/api/allowed/import",
+			map[string]string{"allowedZones": "a.example.test,b.example.test"},
+			func(c *Client) error {
+				return c.AllowedZoneImport(ctx, []string{"a.example.test", "b.example.test"})
+			}},
+		{"AllowedZoneFlush", "/api/allowed/flush", nil,
+			func(c *Client) error { return c.AllowedZoneFlush(ctx) }},
+		{"UserDelete", "/api/admin/users/delete",
+			map[string]string{"user": "alice"},
+			func(c *Client) error { return c.UserDelete(ctx, "alice") }},
+		{"CreateAPIToken", "/api/admin/sessions/createToken",
+			map[string]string{"user": "alice", "tokenName": "ci"},
+			func(c *Client) error { _, err := c.CreateAPIToken(ctx, "alice", "ci"); return err }},
+		{"SessionDelete", "/api/admin/sessions/delete",
+			map[string]string{"partialToken": "abcdef"},
+			func(c *Client) error { return c.SessionDelete(ctx, "abcdef") }},
+		{"ClusterInit", "/api/admin/cluster/init",
+			map[string]string{"clusterDomain": "cluster.example.test", "primaryNodeIpAddresses": "192.0.2.1"},
+			func(c *Client) error {
+				_, err := c.ClusterInit(ctx, "cluster.example.test", []string{"192.0.2.1"})
+				return err
+			}},
+		{"ClusterPrimaryDelete", "/api/admin/cluster/primary/delete",
+			map[string]string{"forceDelete": "true"},
+			func(c *Client) error { return c.ClusterPrimaryDelete(ctx, true) }},
+		{"ClusterSecondaryLeave", "/api/admin/cluster/secondary/leave", nil,
+			func(c *Client) error { return c.ClusterSecondaryLeave(ctx) }},
+		{"ClusterRemoveSecondary", "/api/admin/cluster/primary/removeSecondary",
+			map[string]string{"secondaryNodeId": "7"},
+			func(c *Client) error { return c.ClusterRemoveSecondary(ctx, 7) }},
+		{"ClusterUpdateIPAddress", "/api/admin/cluster/updateIpAddress",
+			map[string]string{"ipAddresses": "192.0.2.1"},
+			func(c *Client) error {
+				_, err := c.ClusterUpdateIPAddress(ctx, []string{"192.0.2.1"})
+				return err
+			}},
+		{"Logout", "/api/user/logout", nil,
+			func(c *Client) error { return c.Logout(ctx) }},
 	}
 }
 

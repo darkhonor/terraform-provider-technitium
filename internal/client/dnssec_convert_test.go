@@ -15,7 +15,8 @@ func TestZoneDNSSECConvertNxProof_CallsCorrectEndpoint(t *testing.T) {
 	var gotPath, gotZone string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		gotZone = r.URL.Query().Get("zone")
+		_ = r.ParseForm()
+		gotZone = r.PostForm.Get("zone")
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	}))
 	defer srv.Close()

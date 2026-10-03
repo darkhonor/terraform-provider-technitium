@@ -102,7 +102,7 @@ func (c *Client) ZoneCreate(ctx context.Context, name, zoneType string, useSoaSe
 		params.Set("initializeForwarder", "false")
 	}
 
-	resp, err := c.doGet(ctx, "/api/zones/create", params)
+	resp, err := c.doPost(ctx, "/api/zones/create", params)
 	if err != nil {
 		return "", fmt.Errorf("creating zone %q: %w", name, err)
 	}
@@ -125,7 +125,7 @@ func (c *Client) ZoneDelete(ctx context.Context, name string) error {
 	params := url.Values{
 		"zone": {name},
 	}
-	_, err := c.doGet(ctx, "/api/zones/delete", params)
+	_, err := c.doPost(ctx, "/api/zones/delete", params)
 	if err != nil {
 		return fmt.Errorf("deleting zone %q: %w", name, err)
 	}
@@ -176,7 +176,7 @@ func (c *Client) ZoneOptionsSet(ctx context.Context, name string, opts map[strin
 		params.Set(k, v)
 	}
 
-	_, err := c.doGet(ctx, "/api/zones/options/set", params)
+	_, err := c.doPost(ctx, "/api/zones/options/set", params)
 	if err != nil {
 		return fmt.Errorf("setting zone options for %q: %w", name, err)
 	}
@@ -214,7 +214,7 @@ func (c *Client) ZoneDNSSECSign(ctx context.Context, name, algorithm, curve, nxP
 		params.Set("saltLength", "0")
 	}
 
-	_, err := c.doGet(ctx, "/api/zones/dnssec/sign", params)
+	_, err := c.doPost(ctx, "/api/zones/dnssec/sign", params)
 	if err != nil {
 		return fmt.Errorf("signing zone %q with DNSSEC: %w", name, err)
 	}
@@ -226,7 +226,7 @@ func (c *Client) ZoneDNSSECUnsign(ctx context.Context, name string) error {
 	params := url.Values{
 		"zone": {name},
 	}
-	_, err := c.doGet(ctx, "/api/zones/dnssec/unsign", params)
+	_, err := c.doPost(ctx, "/api/zones/dnssec/unsign", params)
 	if err != nil {
 		return fmt.Errorf("unsigning zone %q: %w", name, err)
 	}
@@ -255,7 +255,7 @@ func (c *Client) ZoneDNSSECConvertNxProof(ctx context.Context, name, nxProof str
 		params.Set("iterations", "0")
 		params.Set("saltLength", "0")
 	}
-	if _, err := c.doGet(ctx, endpoint, params); err != nil {
+	if _, err := c.doPost(ctx, endpoint, params); err != nil {
 		return fmt.Errorf("converting zone %q to %s: %w", name, nxProof, err)
 	}
 	return nil

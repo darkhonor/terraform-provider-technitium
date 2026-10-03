@@ -80,12 +80,15 @@ func TestZoneCreate_ForwarderCreatesEmptyZone(t *testing.T) {
 		if r.URL.Path != "/api/zones/create" {
 			t.Fatalf("unexpected path %s", r.URL.Path)
 		}
-		q := r.URL.Query()
+		if err := r.ParseForm(); err != nil {
+			t.Fatalf("parsing form: %v", err)
+		}
+		q := r.PostForm
 		if q.Get("zone") != "." || q.Get("type") != "Forwarder" {
-			t.Fatalf("unexpected create query: %s", r.URL.RawQuery)
+			t.Fatalf("unexpected create form: %v", q)
 		}
 		if q.Get("initializeForwarder") != "false" {
-			t.Fatalf("Forwarder zone should be created empty with initializeForwarder=false, got query: %s", r.URL.RawQuery)
+			t.Fatalf("Forwarder zone should be created empty with initializeForwarder=false, got form: %v", q)
 		}
 		if err := json.NewEncoder(w).Encode(APIResponse{
 			Status:   "ok",

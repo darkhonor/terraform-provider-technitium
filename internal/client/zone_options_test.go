@@ -18,7 +18,8 @@ func TestZoneOptionsSet_QueryAccessAndDynamicUpdateParams(t *testing.T) {
 	var got url.Values
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/zones/options/set" {
-			got = r.URL.Query()
+			_ = r.ParseForm()
+			got = r.PostForm
 		}
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})

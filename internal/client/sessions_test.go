@@ -54,7 +54,8 @@ func TestSessionDelete_PassesPartialToken(t *testing.T) {
 		if r.URL.Path != "/api/admin/sessions/delete" {
 			t.Fatalf("unexpected path %q", r.URL.Path)
 		}
-		gotPartial = r.URL.Query().Get("partialToken")
+		_ = r.ParseForm()
+		gotPartial = r.PostForm.Get("partialToken")
 		_, _ = fmt.Fprint(w, `{"status":"ok"}`)
 	})
 

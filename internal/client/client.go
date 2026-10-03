@@ -195,7 +195,7 @@ func (c *Client) Login(ctx context.Context) error {
 // Logout invalidates the current session token. Best effort — errors are
 // returned but the token is cleared regardless.
 func (c *Client) Logout(ctx context.Context) error {
-	_, err := c.doGet(ctx, "/api/user/logout", nil)
+	_, err := c.doPost(ctx, "/api/user/logout", nil)
 	c.token = ""
 	return err
 }
@@ -326,8 +326,8 @@ func (c *Client) errorBody(body []byte) string {
 	return s
 }
 
-// doGet performs a GET request to the Technitium API and returns the parsed response.
-// Most Technitium API endpoints use GET with query parameters, including mutations.
+// doGet performs a GET request with the parameters in the query string.
+// Writes use doPost.
 //
 // The API token is sent as an "Authorization: Bearer" header by default. Set
 // LegacyTokenAuth on the client to fall back to the "token" query parameter
@@ -360,7 +360,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*AP
 	return c.parseResponse(resp)
 }
 
-// doPost performs a POST request with form-encoded body (used by /api/settings/set).
+// doPost performs a POST request with a form-encoded body.
 //
 // The API token is sent as an "Authorization: Bearer" header by default. Set
 // LegacyTokenAuth on the client to fall back to the "token" form field for
