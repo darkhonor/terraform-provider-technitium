@@ -77,7 +77,7 @@ terraform {
   required_providers {
     technitium = {
       source  = "darkhonor/technitium"
-      version = "~> 1.2"
+      version = "~> 1.3"
     }
   }
 }
@@ -258,7 +258,7 @@ the [DISA STIG Library](https://www.cyber.mil/stigs).
 The acceptance suite runs against Technitium **15.5.1**. Servers older than 15.0 are not
 covered by it.
 
-> **Upgrading to v1.3?** Three things can stop an existing configuration from applying:
+> **Upgrading to v1.3?** Four things can stop an existing configuration from applying:
 >
 > - **Technitium older than 15.0:** the provider now sends the API token as an
 >   `Authorization: Bearer` header, which older servers ignore. Set
@@ -267,6 +267,10 @@ covered by it.
 >   tell them apart, so the provider now refuses to create such a pair and refuses to destroy
 >   or update either record of an existing one. Rebuild the pair so the records differ by
 >   `value` or `protocol`.
+> - **A `server_url` that redirects, or a proxy that blocks `POST`:** the provider follows a
+>   redirect only within the same scheme, host, and port, and sends writes as `POST` form
+>   bodies. Set `server_url` to the final address; see
+>   [Reverse Proxies and Load Balancers](docs/guides/reverse-proxy.md).
 > - **Upgrading Technitium to 15.5 or later:** a forwarder zone whose forwarder has
 >   `dnssec_validation = false` becomes a Negative Trust Anchor (DNSSEC validation off for
 >   that namespace), and the record's comment is returned to any client that queries it.
@@ -283,7 +287,7 @@ terraform {
   required_providers {
     technitium = {
       source  = "darkhonor/technitium"
-      version = "~> 1.2"
+      version = "~> 1.3"
     }
   }
 }
@@ -306,6 +310,7 @@ make install
 - [Terraform Registry Documentation](https://registry.terraform.io/providers/darkhonor/technitium/latest/docs)
 - [STIG Compliance Guide](docs/guides/stig-compliance.md)
 - [Upgrading to v1.3](docs/guides/upgrading-to-v1.3.md)
+- [Reverse Proxies and Load Balancers](docs/guides/reverse-proxy.md)
 - [Changelog](CHANGELOG.md)
 - [Security policy](.github/SECURITY.md)
 
