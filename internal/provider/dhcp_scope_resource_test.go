@@ -5,10 +5,14 @@
 package provider
 
 import (
+	"context"
 	"fmt"
+	"regexp"
 	"testing"
 
+	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
+	"github.com/hashicorp/terraform-plugin-testing/terraform"
 )
 
 func TestAccDHCPScopeResource_basic(t *testing.T) {
@@ -25,9 +29,14 @@ func TestAccDHCPScopeResource_basic(t *testing.T) {
 					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "ending_address", "10.42.0.250"),
 					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "subnet_mask", "255.255.255.0"),
 					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "enabled", "false"),
-					// Server-side defaults must be read back into computed attrs
-					resource.TestCheckResourceAttrSet("technitium_dhcp_scope.test", "lease_time_days"),
-					resource.TestCheckResourceAttrSet("technitium_dhcp_scope.test", "dns_ttl"),
+					// A minimal create omits the optional parameters, so the
+					// server's own defaults must land in the computed attrs.
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_days", "1"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_hours", "0"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_minutes", "0"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "dns_ttl", "900"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "ping_check_timeout", "1000"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "ping_check_retries", "2"),
 				),
 			},
 			// Import
@@ -136,6 +145,174 @@ func TestAccDHCPScopeResource_updatePreservesStandaloneLease(t *testing.T) {
 	})
 }
 
+// A scope whose state was populated by the server (import, or an earlier
+// apply) must not lose configuration the config file does not mention: an
+// update from a minimal config may not reset router_address, domain_name, or
+// lease times to zero values.
+func TestAccDHCPScopeResource_minimalUpdatePreservesServerConfig(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDHCPScopeWithRouterAndDomain("acc-scope-minimal"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "router_address", "10.45.0.1"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "domain_name", "minimal.example"),
+				),
+			},
+			// Import with only required attributes declared in config.
+			{
+				ResourceName:      "technitium_dhcp_scope.test",
+				ImportState:       true,
+				ImportStateId:     "acc-scope-minimal",
+				ImportStateVerify: true,
+			},
+			// Update from a config that declares only required attributes plus
+			// the changed one: everything else must survive on the server.
+			{
+				Config: testAccDHCPScopeMinimalLeaseHours("acc-scope-minimal", 12),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "lease_time_hours", "12"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "router_address", "10.45.0.1"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "domain_name", "minimal.example"),
+					testAccCheckScopeOnServer("acc-scope-minimal", func(scope *client.DHCPScope) error {
+						if got := stringDeref(scope.RouterAddress); got != "10.45.0.1" {
+							return fmt.Errorf("routerAddress erased by minimal update: got %q", got)
+						}
+						if got := stringDeref(scope.DomainName); got != "minimal.example" {
+							return fmt.Errorf("domainName erased by minimal update: got %q", got)
+						}
+						return nil
+					}),
+				),
+			},
+		},
+	})
+}
+
+// Removing the reserved_leases attribute from config (not just emptying it)
+// must clear the server-side reservation list, not silently keep it.
+func TestAccDHCPScopeResource_removeInlineReservedLeases(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDHCPScopeInlineLeases("acc-scope-rm-leases"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "reserved_leases.#", "1"),
+					testAccCheckScopeOnServer("acc-scope-rm-leases", func(scope *client.DHCPScope) error {
+						if len(scope.ReservedLeases) != 1 {
+							return fmt.Errorf("got %d reserved leases server-side, want 1", len(scope.ReservedLeases))
+						}
+						return nil
+					}),
+				),
+			},
+			{
+				Config: testAccDHCPScopeBasicNamed("acc-scope-rm-leases", "10.47.0.50", "10.47.0.250"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckNoResourceAttr("technitium_dhcp_scope.test", "reserved_leases.#"),
+					testAccCheckScopeOnServer("acc-scope-rm-leases", func(scope *client.DHCPScope) error {
+						if len(scope.ReservedLeases) != 0 {
+							return fmt.Errorf("got %d reserved leases server-side after removal, want 0", len(scope.ReservedLeases))
+						}
+						return nil
+					}),
+				),
+			},
+		},
+	})
+}
+
+// Lowercase, colon-separated MACs and lowercase hex values are valid input;
+// the server normalizes them, and the read-back must not flag the difference
+// as drift or an inconsistent apply.
+func TestAccDHCPScopeResource_lowercaseMACAndHexFormats(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDHCPScopeLowercaseFormats("acc-scope-fmt"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "reserved_leases.0.hardware_address", "aa:bb:cc:dd:ee:46"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "vendor_info.0.information", "0a:2b:00:05"),
+					resource.TestCheckResourceAttr("technitium_dhcp_scope.test", "generic_options.0.value", "0a:2b:00:05"),
+				),
+			},
+		},
+	})
+}
+
+func TestAccDHCPReservedLeaseResource_lowercaseMAC(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccDHCPReservedLeaseLowercaseMAC("acc-scope-fmt-lease"),
+				Check: resource.ComposeAggregateTestCheckFunc(
+					resource.TestCheckResourceAttr("technitium_dhcp_reserved_lease.fmt", "hardware_address", "aa:bb:cc:dd:ee:47"),
+					resource.TestCheckResourceAttr("technitium_dhcp_reserved_lease.fmt", "ip_address", "10.49.0.101"),
+				),
+			},
+		},
+	})
+}
+
+// scopes/set is create-or-update on the server: Create must refuse to adopt
+// an existing scope rather than silently overwrite its configuration.
+func TestAccDHCPScopeResource_createExisting_Rejected(t *testing.T) {
+	skipUnlessAcceptance(t)
+	c, err := client.NewClient(acceptanceClientConfig())
+	if err != nil {
+		t.Fatalf("client: %v", err)
+	}
+	ctx := context.Background()
+	const name = "acc-scope-preexisting"
+	if err := c.DHCPScopeSet(ctx, client.DHCPScope{
+		Name:            name,
+		StartingAddress: "10.52.0.50",
+		EndingAddress:   "10.52.0.250",
+		SubnetMask:      "255.255.255.0",
+	}, ""); err != nil {
+		t.Fatalf("pre-creating scope: %v", err)
+	}
+	t.Cleanup(func() { _ = c.DHCPScopeDelete(ctx, name) })
+
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config:      testAccDHCPScopeBasicNamed(name, "10.52.0.50", "10.52.0.250"),
+				ExpectError: regexp.MustCompile(`already exists`),
+			},
+		},
+	})
+}
+
+// testAccCheckScopeOnServer fetches the named scope directly from the API,
+// bypassing Terraform state, and runs check against it.
+func testAccCheckScopeOnServer(name string, check func(*client.DHCPScope) error) resource.TestCheckFunc {
+	return func(_ *terraform.State) error {
+		c, err := client.NewClient(acceptanceClientConfig())
+		if err != nil {
+			return err
+		}
+		scope, err := c.DHCPScopeGet(context.Background(), name)
+		if err != nil {
+			return err
+		}
+		return check(scope)
+	}
+}
+
+// stringDeref unwraps the client's optional string fields for assertions.
+func stringDeref(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 func testAccDHCPScopeBasic(name string) string {
 	return testAccDHCPScopeBasicNamed(name, "10.42.0.50", "10.42.0.250")
 }
@@ -149,6 +326,100 @@ resource "technitium_dhcp_scope" "test" {
   subnet_mask      = "255.255.255.0"
 }
 `, name, start, end)
+}
+
+func testAccDHCPScopeWithRouterAndDomain(name string) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "test" {
+  name             = %q
+  starting_address = "10.45.0.50"
+  ending_address   = "10.45.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  router_address = "10.45.0.1"
+  domain_name    = "minimal.example"
+}
+`, name)
+}
+
+func testAccDHCPScopeMinimalLeaseHours(name string, leaseTimeHours int) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "test" {
+  name             = %q
+  starting_address = "10.45.0.50"
+  ending_address   = "10.45.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  lease_time_hours = %d
+}
+`, name, leaseTimeHours)
+}
+
+func testAccDHCPScopeInlineLeases(name string) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "test" {
+  name             = %q
+  starting_address = "10.47.0.50"
+  ending_address   = "10.47.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  reserved_leases = [
+    {
+      hardware_address = "00-11-22-33-44-47"
+      address          = "10.47.0.100"
+    }
+  ]
+}
+`, name)
+}
+
+func testAccDHCPScopeLowercaseFormats(name string) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "test" {
+  name             = %q
+  starting_address = "10.46.0.50"
+  ending_address   = "10.46.0.250"
+  subnet_mask      = "255.255.255.0"
+
+  reserved_leases = [
+    {
+      hardware_address = "aa:bb:cc:dd:ee:46"
+      address          = "10.46.0.100"
+    }
+  ]
+
+  vendor_info = [
+    {
+      identifier  = "test-vendor"
+      information = "0a:2b:00:05"
+    }
+  ]
+
+  generic_options = [
+    {
+      code  = 150
+      value = "0a:2b:00:05"
+    }
+  ]
+}
+`, name)
+}
+
+func testAccDHCPReservedLeaseLowercaseMAC(name string) string {
+	return testAccProviderHCL() + fmt.Sprintf(`
+resource "technitium_dhcp_scope" "fmt" {
+  name             = %q
+  starting_address = "10.49.0.50"
+  ending_address   = "10.49.0.250"
+  subnet_mask      = "255.255.255.0"
+}
+
+resource "technitium_dhcp_reserved_lease" "fmt" {
+  scope            = technitium_dhcp_scope.fmt.name
+  hardware_address = "aa:bb:cc:dd:ee:47"
+  ip_address       = "10.49.0.101"
+}
+`, name)
 }
 
 func testAccDHCPScopeWithStandaloneLease(name string, leaseTimeDays int) string {

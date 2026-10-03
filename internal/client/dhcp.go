@@ -50,29 +50,33 @@ type DHCPReservedLease struct {
 	Comments        string `json:"comments"`
 }
 
-// DHCPScope is the full DHCP scope configuration from /api/dhcp/scopes/get.
+// DHCPScope is the full DHCP scope configuration from /api/dhcp/scopes/get,
+// and the payload for DHCPScopeSet. Optional scalars are pointers so a set
+// call can distinguish unset (nil: the parameter is omitted and the server
+// keeps its current value, or applies its default on create) from an explicit
+// zero value, which is sent.
 type DHCPScope struct {
 	Name                                 string              `json:"name"`
 	StartingAddress                      string              `json:"startingAddress"`
 	EndingAddress                        string              `json:"endingAddress"`
 	SubnetMask                           string              `json:"subnetMask"`
-	LeaseTimeDays                        int                 `json:"leaseTimeDays"`
-	LeaseTimeHours                       int                 `json:"leaseTimeHours"`
-	LeaseTimeMinutes                     int                 `json:"leaseTimeMinutes"`
-	OfferDelayTime                       int                 `json:"offerDelayTime"`
-	PingCheckEnabled                     bool                `json:"pingCheckEnabled"`
-	PingCheckTimeout                     int                 `json:"pingCheckTimeout"`
-	PingCheckRetries                     int                 `json:"pingCheckRetries"`
-	DomainName                           string              `json:"domainName"`
+	LeaseTimeDays                        *int                `json:"leaseTimeDays"`
+	LeaseTimeHours                       *int                `json:"leaseTimeHours"`
+	LeaseTimeMinutes                     *int                `json:"leaseTimeMinutes"`
+	OfferDelayTime                       *int                `json:"offerDelayTime"`
+	PingCheckEnabled                     *bool               `json:"pingCheckEnabled"`
+	PingCheckTimeout                     *int                `json:"pingCheckTimeout"`
+	PingCheckRetries                     *int                `json:"pingCheckRetries"`
+	DomainName                           *string             `json:"domainName"`
 	DomainSearchList                     []string            `json:"domainSearchList"`
-	DNSUpdates                           bool                `json:"dnsUpdates"`
-	DNSOverwriteForDynamicLease          bool                `json:"dnsOverwriteForDynamicLease"`
-	DNSTTL                               int                 `json:"dnsTtl"`
-	ServerAddress                        string              `json:"serverAddress"`
-	ServerHostName                       string              `json:"serverHostName"`
-	BootFileName                         string              `json:"bootFileName"`
-	RouterAddress                        string              `json:"routerAddress"`
-	UseThisDNSServer                     bool                `json:"useThisDnsServer"`
+	DNSUpdates                           *bool               `json:"dnsUpdates"`
+	DNSOverwriteForDynamicLease          *bool               `json:"dnsOverwriteForDynamicLease"`
+	DNSTTL                               *int                `json:"dnsTtl"`
+	ServerAddress                        *string             `json:"serverAddress"`
+	ServerHostName                       *string             `json:"serverHostName"`
+	BootFileName                         *string             `json:"bootFileName"`
+	RouterAddress                        *string             `json:"routerAddress"`
+	UseThisDNSServer                     *bool               `json:"useThisDnsServer"`
 	DNSServers                           []string            `json:"dnsServers"`
 	WINSServers                          []string            `json:"winsServers"`
 	NTPServers                           []string            `json:"ntpServers"`
@@ -84,9 +88,9 @@ type DHCPScope struct {
 	GenericOptions                       []DHCPGenericOption `json:"genericOptions"`
 	Exclusions                           []DHCPExclusion     `json:"exclusions"`
 	ReservedLeases                       []DHCPReservedLease `json:"reservedLeases"`
-	AllowOnlyReservedLeases              bool                `json:"allowOnlyReservedLeases"`
-	BlockLocallyAdministeredMacAddresses bool                `json:"blockLocallyAdministeredMacAddresses"`
-	IgnoreClientIdentifierOption         bool                `json:"ignoreClientIdentifierOption"`
+	AllowOnlyReservedLeases              *bool               `json:"allowOnlyReservedLeases"`
+	BlockLocallyAdministeredMacAddresses *bool               `json:"blockLocallyAdministeredMacAddresses"`
+	IgnoreClientIdentifierOption         *bool               `json:"ignoreClientIdentifierOption"`
 }
 
 // DHCPScopeSummary is a scope entry from /api/dhcp/scopes/list.
@@ -146,15 +150,18 @@ func (c *Client) DHCPScopeGet(ctx context.Context, name string) (*DHCPScope, err
 	return &scope, nil
 }
 
-// DHCPScopeSet creates or updates a DHCP scope with the full desired state.
-// Every parameter is always sent so removed values are cleared on the server
-// rather than silently retained. newName, when non-empty, renames the scope.
+// DHCPScopeSet creates or updates a DHCP scope with the desired state.
+// Scalar parameters are sent when their field is non-nil; nil omits the
+// parameter so the server keeps its current value, or applies its default on
+// create. List parameters are always sent — removed values are cleared on
+// the server rather than silently retained. newName, when non-empty, renames
+// the scope.
 //
-// reservedLeases is the one exception to the always-send contract: the same
-// server-side list is also managed by the standalone reserved-lease endpoints
-// (DHCPScopeAddReservedLease / DHCPScopeRemoveReservedLease), so a scope
-// update that always sent it would wipe reservations created that way. A nil
-// ReservedLeases omits the parameter (server keeps its current list); a
+// reservedLeases is the one exception to the lists' always-send contract: the
+// same server-side list is also managed by the standalone reserved-lease
+// endpoints (DHCPScopeAddReservedLease / DHCPScopeRemoveReservedLease), so a
+// scope update that always sent it would wipe reservations created that way.
+// A nil ReservedLeases omits the parameter (server keeps its current list); a
 // non-nil slice — including an empty one — sends it and overwrites.
 func (c *Client) DHCPScopeSet(ctx context.Context, scope DHCPScope, newName string) error {
 	params := url.Values{}
@@ -165,23 +172,23 @@ func (c *Client) DHCPScopeSet(ctx context.Context, scope DHCPScope, newName stri
 	params.Set("startingAddress", scope.StartingAddress)
 	params.Set("endingAddress", scope.EndingAddress)
 	params.Set("subnetMask", scope.SubnetMask)
-	params.Set("leaseTimeDays", strconv.Itoa(scope.LeaseTimeDays))
-	params.Set("leaseTimeHours", strconv.Itoa(scope.LeaseTimeHours))
-	params.Set("leaseTimeMinutes", strconv.Itoa(scope.LeaseTimeMinutes))
-	params.Set("offerDelayTime", strconv.Itoa(scope.OfferDelayTime))
-	params.Set("pingCheckEnabled", strconv.FormatBool(scope.PingCheckEnabled))
-	params.Set("pingCheckTimeout", strconv.Itoa(scope.PingCheckTimeout))
-	params.Set("pingCheckRetries", strconv.Itoa(scope.PingCheckRetries))
-	params.Set("domainName", scope.DomainName)
+	setIntParam(params, "leaseTimeDays", scope.LeaseTimeDays)
+	setIntParam(params, "leaseTimeHours", scope.LeaseTimeHours)
+	setIntParam(params, "leaseTimeMinutes", scope.LeaseTimeMinutes)
+	setIntParam(params, "offerDelayTime", scope.OfferDelayTime)
+	setBoolParam(params, "pingCheckEnabled", scope.PingCheckEnabled)
+	setIntParam(params, "pingCheckTimeout", scope.PingCheckTimeout)
+	setIntParam(params, "pingCheckRetries", scope.PingCheckRetries)
+	setStringParam(params, "domainName", scope.DomainName)
 	params.Set("domainSearchList", strings.Join(scope.DomainSearchList, ","))
-	params.Set("dnsUpdates", strconv.FormatBool(scope.DNSUpdates))
-	params.Set("dnsOverwriteForDynamicLease", strconv.FormatBool(scope.DNSOverwriteForDynamicLease))
-	params.Set("dnsTtl", strconv.Itoa(scope.DNSTTL))
-	params.Set("serverAddress", scope.ServerAddress)
-	params.Set("serverHostName", scope.ServerHostName)
-	params.Set("bootFileName", scope.BootFileName)
-	params.Set("routerAddress", scope.RouterAddress)
-	params.Set("useThisDnsServer", strconv.FormatBool(scope.UseThisDNSServer))
+	setBoolParam(params, "dnsUpdates", scope.DNSUpdates)
+	setBoolParam(params, "dnsOverwriteForDynamicLease", scope.DNSOverwriteForDynamicLease)
+	setIntParam(params, "dnsTtl", scope.DNSTTL)
+	setStringParam(params, "serverAddress", scope.ServerAddress)
+	setStringParam(params, "serverHostName", scope.ServerHostName)
+	setStringParam(params, "bootFileName", scope.BootFileName)
+	setStringParam(params, "routerAddress", scope.RouterAddress)
+	setBoolParam(params, "useThisDnsServer", scope.UseThisDNSServer)
 	params.Set("dnsServers", strings.Join(scope.DNSServers, ","))
 	params.Set("winsServers", strings.Join(scope.WINSServers, ","))
 	params.Set("ntpServers", strings.Join(scope.NTPServers, ","))
@@ -195,9 +202,9 @@ func (c *Client) DHCPScopeSet(ctx context.Context, scope DHCPScope, newName stri
 	if scope.ReservedLeases != nil {
 		params.Set("reservedLeases", encodeDHCPReservedLeases(scope.ReservedLeases))
 	}
-	params.Set("allowOnlyReservedLeases", strconv.FormatBool(scope.AllowOnlyReservedLeases))
-	params.Set("blockLocallyAdministeredMacAddresses", strconv.FormatBool(scope.BlockLocallyAdministeredMacAddresses))
-	params.Set("ignoreClientIdentifierOption", strconv.FormatBool(scope.IgnoreClientIdentifierOption))
+	setBoolParam(params, "allowOnlyReservedLeases", scope.AllowOnlyReservedLeases)
+	setBoolParam(params, "blockLocallyAdministeredMacAddresses", scope.BlockLocallyAdministeredMacAddresses)
+	setBoolParam(params, "ignoreClientIdentifierOption", scope.IgnoreClientIdentifierOption)
 
 	if _, err := c.doPost(ctx, "/api/dhcp/scopes/set", params); err != nil {
 		return fmt.Errorf("setting DHCP scope %q: %w", scope.Name, err)
@@ -362,6 +369,24 @@ func encodeDHCPExclusions(exclusions []DHCPExclusion) string {
 		parts = append(parts, e.StartingAddress, e.EndingAddress)
 	}
 	return strings.Join(parts, "|")
+}
+
+func setIntParam(params url.Values, key string, v *int) {
+	if v != nil {
+		params.Set(key, strconv.Itoa(*v))
+	}
+}
+
+func setBoolParam(params url.Values, key string, v *bool) {
+	if v != nil {
+		params.Set(key, strconv.FormatBool(*v))
+	}
+}
+
+func setStringParam(params url.Values, key string, v *string) {
+	if v != nil {
+		params.Set(key, *v)
+	}
 }
 
 // encodeDHCPReservedLeases flattens reservations into host|mac|ip|comments groups.

@@ -75,6 +75,86 @@ resource "technitium_dhcp_scope" "bad" {
 	})
 }
 
+// The scopes/set wire encoding joins fields with "|"; a literal pipe in any
+// free-text field would shift every later field, so it is rejected at plan time.
+func TestAccDHCPScopeResource_pipeInFields_Rejected(t *testing.T) {
+	cases := []struct {
+		name string
+		attr string
+	}{
+		{"reserved lease comments", `
+  reserved_leases = [
+    {
+      hardware_address = "00-11-22-33-44-55"
+      address          = "10.50.0.100"
+      comments         = "rack 3 | port 12"
+    }
+  ]`},
+		{"reserved lease host name", `
+  reserved_leases = [
+    {
+      host_name        = "a|b"
+      hardware_address = "00-11-22-33-44-55"
+      address          = "10.50.0.100"
+    }
+  ]`},
+		{"vendor info", `
+  vendor_info = [
+    {
+      identifier  = "MSFT|5.0"
+      information = "AA:BB"
+    }
+  ]`},
+		{"generic option value", `
+  generic_options = [
+    {
+      code  = 150
+      value = "AA|BB"
+    }
+  ]`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			resource.Test(t, resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: testAccProviderHCL() + `
+resource "technitium_dhcp_scope" "bad" {
+  name             = "acc-bad-pipe"
+  starting_address = "10.50.0.50"
+  ending_address   = "10.50.0.250"
+  subnet_mask      = "255.255.255.0"
+` + tc.attr + `
+}
+`,
+						ExpectError: regexp.MustCompile(`must not contain "\|"`),
+					},
+				},
+			})
+		})
+	}
+}
+
+func TestAccDHCPReservedLeaseResource_pipeInFields_Rejected(t *testing.T) {
+	resource.Test(t, resource.TestCase{
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			{
+				Config: testAccProviderHCL() + `
+resource "technitium_dhcp_reserved_lease" "bad" {
+  scope            = "whatever"
+  hardware_address = "00-11-22-33-44-55"
+  ip_address       = "10.50.0.100"
+  comments         = "rack 3 | port 12"
+}
+`,
+				ExpectError: regexp.MustCompile(`must not contain "\|"`),
+			},
+		},
+	})
+}
+
 func TestAccDHCPReservedLeaseResource_invalidMAC_Rejected(t *testing.T) {
 	resource.Test(t, resource.TestCase{
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,

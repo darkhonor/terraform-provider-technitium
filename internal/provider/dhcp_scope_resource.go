@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -15,6 +16,10 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/boolplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 )
 
@@ -119,9 +124,10 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Description: "Scope identifier (same as scope name).",
-				// No UseStateForUnknown: the id tracks the name, which is
-				// renameable in place, so it must be recomputed on rename.
-				Computed: true,
+				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					scopeIDTracksName{},
+				},
 			},
 			"name": schema.StringAttribute{
 				Description: "The name of the DHCP scope. Renaming is supported in place.",
@@ -150,41 +156,65 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "Lease time, days component. Default: server default (1).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"lease_time_hours": schema.Int64Attribute{
 				Description: "Lease time, hours component.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"lease_time_minutes": schema.Int64Attribute{
 				Description: "Lease time, minutes component.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"offer_delay_time": schema.Int64Attribute{
 				Description: "Delay in milliseconds before sending DHCPOFFER.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"ping_check_enabled": schema.BoolAttribute{
 				Description: "Ping an address before offering it to detect conflicts with statically configured devices.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ping_check_timeout": schema.Int64Attribute{
 				Description: "Ping reply timeout in milliseconds.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"ping_check_retries": schema.Int64Attribute{
 				Description: "Maximum number of ping attempts.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"domain_name": schema.StringAttribute{
 				Description: "Domain name for this network (option 15). When set, the DHCP server adds forward and reverse DNS entries for allocations.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"domain_search_list": schema.ListAttribute{
 				Description: "Domain names clients use as search suffixes (option 119).",
@@ -195,41 +225,65 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "Automatically update forward and reverse DNS entries for clients.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dns_overwrite_for_dynamic_lease": schema.BoolAttribute{
 				Description: "Overwrite existing DNS A records matching the client domain name for dynamic leases.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dns_ttl": schema.Int64Attribute{
 				Description: "TTL for DNS records created by the DHCP server.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"server_address": schema.StringAttribute{
 				Description: "Next server (TFTP) address used in bootstrap (siaddr). Defaults to this server's address.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"server_host_name": schema.StringAttribute{
 				Description: "Bootstrap TFTP server host name (sname / option 66).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"boot_file_name": schema.StringAttribute{
 				Description: "Boot file name on the bootstrap TFTP server (file / option 67).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"router_address": schema.StringAttribute{
 				Description: "Default gateway address for clients (option 3).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"use_this_dns_server": schema.BoolAttribute{
 				Description: "Advertise this DNS server's address as the DNS server for clients (overrides dns_servers).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"dns_servers": schema.ListAttribute{
 				Description: "DNS server addresses for clients (option 6). Ignored when use_this_dns_server is true.",
@@ -303,10 +357,10 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				},
 			},
 			"reserved_leases": schema.ListNestedAttribute{
-				Description: "Inline MAC-to-IP reservations. When this attribute is omitted the scope leaves the " +
+				Description: "Inline MAC-to-IP reservations. While this attribute has never been declared the scope leaves the " +
 					"server-side reservation list alone, so standalone technitium_dhcp_reserved_lease resources can manage it. " +
 					"Do not combine the two styles on the same scope — a declared list (even an empty one) overwrites the " +
-					"server's list on every scope update.",
+					"server's list on every scope update, and removing the attribute from config clears the list.",
 				Optional: true,
 				NestedObject: schema.NestedAttributeObject{
 					Attributes: map[string]schema.Attribute{
@@ -321,19 +375,49 @@ func (r *DHCPScopeResource) Schema(_ context.Context, _ resource.SchemaRequest, 
 				Description: "Stop dynamic allocation and serve only reserved leases.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"block_locally_administered_mac_addresses": schema.BoolAttribute{
 				Description: "Refuse dynamic allocation for clients with locally administered MAC addresses (privacy/randomized MACs).",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"ignore_client_identifier_option": schema.BoolAttribute{
 				Description: "Always use the client MAC address as the lease identifier instead of option 61.",
 				Optional:    true,
 				Computed:    true,
+				PlanModifiers: []planmodifier.Bool{
+					boolplanmodifier.UseStateForUnknown(),
+				},
 			},
 		},
 	}
+}
+
+// scopeIDTracksName plans the id as the planned name: the id is the scope
+// name, so it is known at plan time and changes only on rename.
+type scopeIDTracksName struct{}
+
+func (scopeIDTracksName) Description(context.Context) string {
+	return "id tracks the scope name"
+}
+
+func (scopeIDTracksName) MarkdownDescription(ctx context.Context) string {
+	return scopeIDTracksName{}.Description(ctx)
+}
+
+func (scopeIDTracksName) PlanModifyString(ctx context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	var name types.String
+	resp.Diagnostics.Append(req.Plan.GetAttribute(ctx, path.Root("name"), &name)...)
+	if resp.Diagnostics.HasError() || name.IsUnknown() || name.IsNull() {
+		return
+	}
+	resp.PlanValue = name
 }
 
 func (r *DHCPScopeResource) Configure(_ context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
@@ -353,6 +437,20 @@ func (r *DHCPScopeResource) Create(ctx context.Context, req resource.CreateReque
 	var plan DHCPScopeResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
 	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// scopes/set is create-or-update on the server: creating a scope whose
+	// name is already taken would silently overwrite its configuration.
+	name := plan.Name.ValueString()
+	if _, err := r.client.DHCPScopeGet(ctx, name); err == nil {
+		resp.Diagnostics.AddError("DHCP scope already exists",
+			fmt.Sprintf("A DHCP scope named %q already exists on the server. "+
+				"To manage it with Terraform, import it instead: "+
+				"terraform import <resource address> %q", name, name))
+		return
+	} else if !errors.Is(err, client.ErrDHCPScopeNotFound) {
+		resp.Diagnostics.AddError("Error checking for existing DHCP scope", err.Error())
 		return
 	}
 
@@ -419,6 +517,11 @@ func (r *DHCPScopeResource) Update(ctx context.Context, req resource.UpdateReque
 	scope := r.scopeFromModel(ctx, &plan, &resp.Diagnostics)
 	if resp.Diagnostics.HasError() {
 		return
+	}
+	// Removing the reserved_leases attribute (prior state non-nil, plan nil)
+	// must clear the server-side list; plain omission would keep it.
+	if plan.ReservedLeases == nil && state.ReservedLeases != nil {
+		scope.ReservedLeases = []client.DHCPReservedLease{}
 	}
 	currentName := state.Name.ValueString()
 	newName := ""
@@ -508,31 +611,33 @@ func (r *DHCPScopeResource) readBack(ctx context.Context, name string, model *DH
 }
 
 // scopeFromModel converts the Terraform model to the client scope struct.
+// Unknown or null scalars map to nil so DHCPScopeSet omits their parameters
+// and the server keeps its current values (or applies defaults on create).
 func (r *DHCPScopeResource) scopeFromModel(ctx context.Context, m *DHCPScopeResourceModel, diags *diag.Diagnostics) client.DHCPScope {
 	scope := client.DHCPScope{
 		Name:                                 m.Name.ValueString(),
 		StartingAddress:                      m.StartingAddress.ValueString(),
 		EndingAddress:                        m.EndingAddress.ValueString(),
 		SubnetMask:                           m.SubnetMask.ValueString(),
-		LeaseTimeDays:                        int(m.LeaseTimeDays.ValueInt64()),
-		LeaseTimeHours:                       int(m.LeaseTimeHours.ValueInt64()),
-		LeaseTimeMinutes:                     int(m.LeaseTimeMinutes.ValueInt64()),
-		OfferDelayTime:                       int(m.OfferDelayTime.ValueInt64()),
-		PingCheckEnabled:                     m.PingCheckEnabled.ValueBool(),
-		PingCheckTimeout:                     int(m.PingCheckTimeout.ValueInt64()),
-		PingCheckRetries:                     int(m.PingCheckRetries.ValueInt64()),
-		DomainName:                           m.DomainName.ValueString(),
-		DNSUpdates:                           m.DNSUpdates.ValueBool(),
-		DNSOverwriteForDynamicLease:          m.DNSOverwriteForDynamicLease.ValueBool(),
-		DNSTTL:                               int(m.DNSTTL.ValueInt64()),
-		ServerAddress:                        m.ServerAddress.ValueString(),
-		ServerHostName:                       m.ServerHostName.ValueString(),
-		BootFileName:                         m.BootFileName.ValueString(),
-		RouterAddress:                        m.RouterAddress.ValueString(),
-		UseThisDNSServer:                     m.UseThisDNSServer.ValueBool(),
-		AllowOnlyReservedLeases:              m.AllowOnlyReservedLeases.ValueBool(),
-		BlockLocallyAdministeredMacAddresses: m.BlockLocallyAdministeredMacAddresses.ValueBool(),
-		IgnoreClientIdentifierOption:         m.IgnoreClientIdentifierOption.ValueBool(),
+		LeaseTimeDays:                        intPtrFromModel(m.LeaseTimeDays),
+		LeaseTimeHours:                       intPtrFromModel(m.LeaseTimeHours),
+		LeaseTimeMinutes:                     intPtrFromModel(m.LeaseTimeMinutes),
+		OfferDelayTime:                       intPtrFromModel(m.OfferDelayTime),
+		PingCheckEnabled:                     boolPtrFromModel(m.PingCheckEnabled),
+		PingCheckTimeout:                     intPtrFromModel(m.PingCheckTimeout),
+		PingCheckRetries:                     intPtrFromModel(m.PingCheckRetries),
+		DomainName:                           stringPtrFromModel(m.DomainName),
+		DNSUpdates:                           boolPtrFromModel(m.DNSUpdates),
+		DNSOverwriteForDynamicLease:          boolPtrFromModel(m.DNSOverwriteForDynamicLease),
+		DNSTTL:                               intPtrFromModel(m.DNSTTL),
+		ServerAddress:                        stringPtrFromModel(m.ServerAddress),
+		ServerHostName:                       stringPtrFromModel(m.ServerHostName),
+		BootFileName:                         stringPtrFromModel(m.BootFileName),
+		RouterAddress:                        stringPtrFromModel(m.RouterAddress),
+		UseThisDNSServer:                     boolPtrFromModel(m.UseThisDNSServer),
+		AllowOnlyReservedLeases:              boolPtrFromModel(m.AllowOnlyReservedLeases),
+		BlockLocallyAdministeredMacAddresses: boolPtrFromModel(m.BlockLocallyAdministeredMacAddresses),
+		IgnoreClientIdentifierOption:         boolPtrFromModel(m.IgnoreClientIdentifierOption),
 	}
 
 	scope.DomainSearchList = stringListFromModel(ctx, m.DomainSearchList, diags)
@@ -597,25 +702,25 @@ func (r *DHCPScopeResource) modelFromScope(ctx context.Context, scope *client.DH
 	m.StartingAddress = types.StringValue(scope.StartingAddress)
 	m.EndingAddress = types.StringValue(scope.EndingAddress)
 	m.SubnetMask = types.StringValue(scope.SubnetMask)
-	m.LeaseTimeDays = types.Int64Value(int64(scope.LeaseTimeDays))
-	m.LeaseTimeHours = types.Int64Value(int64(scope.LeaseTimeHours))
-	m.LeaseTimeMinutes = types.Int64Value(int64(scope.LeaseTimeMinutes))
-	m.OfferDelayTime = types.Int64Value(int64(scope.OfferDelayTime))
-	m.PingCheckEnabled = types.BoolValue(scope.PingCheckEnabled)
-	m.PingCheckTimeout = types.Int64Value(int64(scope.PingCheckTimeout))
-	m.PingCheckRetries = types.Int64Value(int64(scope.PingCheckRetries))
-	m.DomainName = types.StringValue(scope.DomainName)
-	m.DNSUpdates = types.BoolValue(scope.DNSUpdates)
-	m.DNSOverwriteForDynamicLease = types.BoolValue(scope.DNSOverwriteForDynamicLease)
-	m.DNSTTL = types.Int64Value(int64(scope.DNSTTL))
-	m.ServerAddress = types.StringValue(scope.ServerAddress)
-	m.ServerHostName = types.StringValue(scope.ServerHostName)
-	m.BootFileName = types.StringValue(scope.BootFileName)
-	m.RouterAddress = types.StringValue(scope.RouterAddress)
-	m.UseThisDNSServer = types.BoolValue(scope.UseThisDNSServer)
-	m.AllowOnlyReservedLeases = types.BoolValue(scope.AllowOnlyReservedLeases)
-	m.BlockLocallyAdministeredMacAddresses = types.BoolValue(scope.BlockLocallyAdministeredMacAddresses)
-	m.IgnoreClientIdentifierOption = types.BoolValue(scope.IgnoreClientIdentifierOption)
+	m.LeaseTimeDays = types.Int64Value(int64(deref(scope.LeaseTimeDays)))
+	m.LeaseTimeHours = types.Int64Value(int64(deref(scope.LeaseTimeHours)))
+	m.LeaseTimeMinutes = types.Int64Value(int64(deref(scope.LeaseTimeMinutes)))
+	m.OfferDelayTime = types.Int64Value(int64(deref(scope.OfferDelayTime)))
+	m.PingCheckEnabled = types.BoolValue(deref(scope.PingCheckEnabled))
+	m.PingCheckTimeout = types.Int64Value(int64(deref(scope.PingCheckTimeout)))
+	m.PingCheckRetries = types.Int64Value(int64(deref(scope.PingCheckRetries)))
+	m.DomainName = types.StringValue(deref(scope.DomainName))
+	m.DNSUpdates = types.BoolValue(deref(scope.DNSUpdates))
+	m.DNSOverwriteForDynamicLease = types.BoolValue(deref(scope.DNSOverwriteForDynamicLease))
+	m.DNSTTL = types.Int64Value(int64(deref(scope.DNSTTL)))
+	m.ServerAddress = types.StringValue(deref(scope.ServerAddress))
+	m.ServerHostName = types.StringValue(deref(scope.ServerHostName))
+	m.BootFileName = types.StringValue(deref(scope.BootFileName))
+	m.RouterAddress = types.StringValue(deref(scope.RouterAddress))
+	m.UseThisDNSServer = types.BoolValue(deref(scope.UseThisDNSServer))
+	m.AllowOnlyReservedLeases = types.BoolValue(deref(scope.AllowOnlyReservedLeases))
+	m.BlockLocallyAdministeredMacAddresses = types.BoolValue(deref(scope.BlockLocallyAdministeredMacAddresses))
+	m.IgnoreClientIdentifierOption = types.BoolValue(deref(scope.IgnoreClientIdentifierOption))
 
 	readStringList(ctx, &m.DomainSearchList, scope.DomainSearchList)
 	readStringList(ctx, &m.DNSServers, scope.DNSServers)
@@ -640,22 +745,35 @@ func (r *DHCPScopeResource) modelFromScope(ctx context.Context, scope *client.DH
 		m.StaticRoutes = routes
 	}
 	if m.VendorInfo != nil {
+		prior := m.VendorInfo
 		entries := make([]DHCPVendorInfoModel, 0, len(scope.VendorInfo))
-		for _, vi := range scope.VendorInfo {
-			entries = append(entries, DHCPVendorInfoModel{
+		for i, vi := range scope.VendorInfo {
+			entry := DHCPVendorInfoModel{
 				Identifier:  types.StringValue(vi.Identifier),
 				Information: types.StringValue(vi.Information),
-			})
+			}
+			// Keep the configured hex formatting when it encodes the same
+			// bytes as the server's normalized form.
+			if i < len(prior) && hexValueEqual(prior[i].Information.ValueString(), vi.Information) {
+				entry.Information = prior[i].Information
+			}
+			entries = append(entries, entry)
 		}
 		m.VendorInfo = entries
 	}
 	if m.GenericOptions != nil {
+		prior := m.GenericOptions
 		opts := make([]DHCPGenericOptionModel, 0, len(scope.GenericOptions))
-		for _, opt := range scope.GenericOptions {
-			opts = append(opts, DHCPGenericOptionModel{
+		for i, opt := range scope.GenericOptions {
+			model := DHCPGenericOptionModel{
 				Code:  types.Int64Value(int64(opt.Code)),
 				Value: types.StringValue(opt.Value),
-			})
+			}
+			if i < len(prior) && prior[i].Code.ValueInt64() == int64(opt.Code) &&
+				hexValueEqual(prior[i].Value.ValueString(), opt.Value) {
+				model.Value = prior[i].Value
+			}
+			opts = append(opts, model)
 		}
 		m.GenericOptions = opts
 	}
@@ -670,14 +788,24 @@ func (r *DHCPScopeResource) modelFromScope(ctx context.Context, scope *client.DH
 		m.Exclusions = exclusions
 	}
 	if m.ReservedLeases != nil {
+		prior := m.ReservedLeases
 		leases := make([]DHCPReservedLeaseModel, 0, len(scope.ReservedLeases))
 		for _, lease := range scope.ReservedLeases {
-			leases = append(leases, DHCPReservedLeaseModel{
+			model := DHCPReservedLeaseModel{
 				HostName:        stringOrNull(lease.HostName),
 				HardwareAddress: types.StringValue(lease.HardwareAddress),
 				Address:         types.StringValue(lease.Address),
 				Comments:        stringOrNull(lease.Comments),
-			})
+			}
+			// Keep the configured MAC formatting; the server normalizes
+			// case and separators.
+			for _, p := range prior {
+				if macEqual(p.HardwareAddress.ValueString(), lease.HardwareAddress) {
+					model.HardwareAddress = p.HardwareAddress
+					break
+				}
+			}
+			leases = append(leases, model)
 		}
 		m.ReservedLeases = leases
 	}
@@ -699,4 +827,53 @@ func stringOrNull(s string) types.String {
 		return types.StringNull()
 	}
 	return types.StringValue(s)
+}
+
+// intPtrFromModel maps a known types.Int64 to *int, and null/unknown to nil.
+func intPtrFromModel(v types.Int64) *int {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	i := int(v.ValueInt64())
+	return &i
+}
+
+// boolPtrFromModel maps a known types.Bool to *bool, and null/unknown to nil.
+func boolPtrFromModel(v types.Bool) *bool {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	b := v.ValueBool()
+	return &b
+}
+
+// stringPtrFromModel maps a known types.String to *string, and null/unknown to nil.
+func stringPtrFromModel(v types.String) *string {
+	if v.IsNull() || v.IsUnknown() {
+		return nil
+	}
+	s := v.ValueString()
+	return &s
+}
+
+// hexValueEqual compares hex option values ignoring case and :/- separator
+// differences (e.g. "0a:2b" and "0A-2B" encode the same bytes).
+func hexValueEqual(a, b string) bool {
+	return normalizeHexValue(a) == normalizeHexValue(b)
+}
+
+func normalizeHexValue(s string) string {
+	s = strings.ToUpper(s)
+	s = strings.ReplaceAll(s, ":", "")
+	s = strings.ReplaceAll(s, "-", "")
+	return s
+}
+
+// deref returns the pointed-to value, or the zero value for nil.
+func deref[T any](p *T) T {
+	if p == nil {
+		var zero T
+		return zero
+	}
+	return *p
 }

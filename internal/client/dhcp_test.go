@@ -12,6 +12,9 @@ import (
 	"testing"
 )
 
+// ptr builds a pointer to v for DHCPScope's optional scalar fields.
+func ptr[T any](v T) *T { return &v }
+
 func TestDHCPScopeList(t *testing.T) {
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/dhcp/scopes/list" {
@@ -66,7 +69,9 @@ func TestDHCPScopeGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if scope.LeaseTimeDays != 7 || scope.DomainName != "local" || scope.DNSTTL != 900 {
+	if scope.LeaseTimeDays == nil || *scope.LeaseTimeDays != 7 ||
+		scope.DomainName == nil || *scope.DomainName != "local" ||
+		scope.DNSTTL == nil || *scope.DNSTTL != 900 {
 		t.Errorf("unexpected scope fields: %+v", scope)
 	}
 	if len(scope.StaticRoutes) != 1 || scope.StaticRoutes[0].Router != "192.168.1.2" {
@@ -110,7 +115,6 @@ func TestDHCPScopeSet_WireFormat(t *testing.T) {
 			"endingAddress":    "10.0.0.250",
 			"subnetMask":       "255.255.255.0",
 			"leaseTimeDays":    "7",
-			"leaseTimeHours":   "0",
 			"domainSearchList": "a.example,b.example",
 			"dnsServers":       "10.0.0.5,10.0.0.6",
 			"staticRoutes":     "172.16.0.0|255.255.255.0|10.0.0.2|172.17.0.0|255.255.0.0|10.0.0.3",
@@ -126,8 +130,18 @@ func TestDHCPScopeSet_WireFormat(t *testing.T) {
 				t.Errorf("param %s: got %q, want %q", k, got, want)
 			}
 		}
-		// Always-send contract: clearing params must be present even when empty.
-		for _, k := range []string{"domainName", "routerAddress", "winsServers", "ntpServers"} {
+		// A set (non-nil) empty scalar must be sent: empty clears the server value.
+		if !r.PostForm.Has("domainName") {
+			t.Error("param domainName must be sent when set (empty clears server value)")
+		}
+		// Unset (nil) scalars must be omitted so the server keeps its value.
+		for _, k := range []string{"leaseTimeHours", "routerAddress", "dnsTtl", "useThisDnsServer"} {
+			if r.PostForm.Has(k) {
+				t.Errorf("param %s must be omitted when unset, got %q", k, r.FormValue(k))
+			}
+		}
+		// List params are always sent; empty clears the server value.
+		for _, k := range []string{"winsServers", "ntpServers"} {
 			if !r.PostForm.Has(k) {
 				t.Errorf("param %s must always be sent (empty clears server value)", k)
 			}
@@ -144,9 +158,11 @@ func TestDHCPScopeSet_WireFormat(t *testing.T) {
 		StartingAddress:  "10.0.0.50",
 		EndingAddress:    "10.0.0.250",
 		SubnetMask:       "255.255.255.0",
-		LeaseTimeDays:    7,
+		LeaseTimeDays:    ptr(7),
+		DomainName:       ptr(""),
 		DomainSearchList: []string{"a.example", "b.example"},
-		DNSUpdates:       true,
+		DNSUpdates:       ptr(true),
+		PingCheckEnabled: ptr(false),
 		DNSServers:       []string{"10.0.0.5", "10.0.0.6"},
 		StaticRoutes: []DHCPStaticRoute{
 			{Destination: "172.16.0.0", SubnetMask: "255.255.255.0", Router: "10.0.0.2"},

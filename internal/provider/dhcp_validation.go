@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -74,9 +75,22 @@ func (r *DHCPScopeResource) ValidateConfig(ctx context.Context, req resource.Val
 		validateIPv4Attr(route.Router, p.AtName("router"), &resp.Diagnostics)
 	}
 
+	for i, vi := range config.VendorInfo {
+		p := path.Root("vendor_info").AtListIndex(i)
+		validateNoPipeAttr(vi.Identifier, p.AtName("identifier"), &resp.Diagnostics)
+		validateNoPipeAttr(vi.Information, p.AtName("information"), &resp.Diagnostics)
+	}
+
+	for i, opt := range config.GenericOptions {
+		p := path.Root("generic_options").AtListIndex(i)
+		validateNoPipeAttr(opt.Value, p.AtName("value"), &resp.Diagnostics)
+	}
+
 	for i, lease := range config.ReservedLeases {
 		p := path.Root("reserved_leases").AtListIndex(i)
 		validateMACAttr(lease.HardwareAddress, p.AtName("hardware_address"), &resp.Diagnostics)
+		validateNoPipeAttr(lease.HostName, p.AtName("host_name"), &resp.Diagnostics)
+		validateNoPipeAttr(lease.Comments, p.AtName("comments"), &resp.Diagnostics)
 		addr := validateIPv4Attr(lease.Address, p.AtName("address"), &resp.Diagnostics)
 		if start != nil && end != nil && addr != nil &&
 			(ipv4ToUint(addr) < ipv4ToUint(start) || ipv4ToUint(addr) > ipv4ToUint(end)) {
@@ -96,6 +110,20 @@ func (r *DHCPReservedLeaseResource) ValidateConfig(ctx context.Context, req reso
 	}
 	validateMACAttr(config.HardwareAddress, path.Root("hardware_address"), &resp.Diagnostics)
 	validateIPv4Attr(config.IPAddress, path.Root("ip_address"), &resp.Diagnostics)
+	validateNoPipeAttr(config.HostName, path.Root("host_name"), &resp.Diagnostics)
+	validateNoPipeAttr(config.Comments, path.Root("comments"), &resp.Diagnostics)
+}
+
+// validateNoPipeAttr rejects values containing "|", the field delimiter of the
+// scopes/set wire encoding: a literal pipe would shift every later field.
+func validateNoPipeAttr(v types.String, p path.Path, diags *diag.Diagnostics) {
+	if v.IsNull() || v.IsUnknown() {
+		return
+	}
+	if strings.Contains(v.ValueString(), "|") {
+		diags.AddAttributeError(p, "Invalid character",
+			`Value must not contain "|": it is the field delimiter in the Technitium API encoding.`)
+	}
 }
 
 // validateIPv4Attr parses a types.String as an IPv4 address, appending a
