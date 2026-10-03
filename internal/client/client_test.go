@@ -13,6 +13,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/json"
 	"encoding/pem"
+	"errors"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -167,16 +168,14 @@ func TestDoGet_TokenViaBearerHeader(t *testing.T) {
 	}
 }
 
-// TestDoGet_LegacyTokenAuth verifies that setting LegacyTokenAuth preserves
-// the pre-15.0 behavior of sending the token as a query parameter, for
-// operators on older Technitium DNS Server versions that don't understand
-// the Authorization header.
 func TestDoGet_LegacyTokenAuth(t *testing.T) {
-	var gotAuthHeader string
-	var gotToken string
+	var gotAuthHeader, gotToken, gotMethod, gotRawQuery string
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		gotAuthHeader = r.Header.Get("Authorization")
-		gotToken = r.URL.Query().Get("token")
+		gotMethod = r.Method
+		gotRawQuery = r.URL.RawQuery
+		gotToken = r.PostForm.Get("token")
 		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
 			t.Fatalf("failed to encode response: %v", err)
 		}
@@ -188,64 +187,62 @@ func TestDoGet_LegacyTokenAuth(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	if gotMethod != http.MethodPost || gotRawQuery != "" {
+		t.Errorf("legacy request = %s with query %q, want POST with no query", gotMethod, gotRawQuery)
+	}
 	if gotToken != "legacy-token" {
-		t.Errorf("expected token=legacy-token in query params, got %q", gotToken)
+		t.Errorf("expected token=legacy-token in the form body, got %q", gotToken)
 	}
 	if gotAuthHeader != "" {
 		t.Errorf("expected no Authorization header in legacy mode, got %q", gotAuthHeader)
 	}
 }
 
-// TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken is a regression test
-// for a token leak via *url.Error: in LegacyTokenAuth mode the token
-// travels in the request's query string, and http.Client.Do wraps
-// transport failures (DNS, connection refused, TLS, timeout...) in a
-// *url.Error whose Error() method embeds the full request URL verbatim,
-// including that query string. Without redaction, the token would land in
-// the Terraform diagnostic surfaced to the user (see provider.go's
-// "Unable to connect to Technitium server" diagnostic).
-func TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
-	const secretToken = "super-secret-token-abc123"
-
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
-			t.Fatalf("failed to encode response: %v", err)
-		}
-	})
-	ts.Close() // closed immediately: any request now fails at the transport layer
-
-	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
-	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
-	if err == nil {
-		t.Fatal("expected a transport error against a closed server")
+func failingTransportClient(t *testing.T, token string, seen *[]*http.Request) *Client {
+	t.Helper()
+	c, err := NewClient(ClientConfig{BaseURL: "http://127.0.0.1:1", Token: token, LegacyTokenAuth: true})
+	if err != nil {
+		t.Fatal(err)
 	}
-	if strings.Contains(err.Error(), secretToken) {
+	c.httpClient = &http.Client{Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		*seen = append(*seen, r)
+		return nil, errors.New("connection refused")
+	})}
+	return c
+}
+
+func assertLegacyTransportFailure(t *testing.T, err error, token string, seen []*http.Request) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected a transport error")
+	}
+	if strings.Contains(err.Error(), token) {
 		t.Errorf("error message leaks the API token: %v", err)
+	}
+	if len(seen) == 0 {
+		t.Fatal("no request reached the transport")
+	}
+	for _, r := range seen {
+		if r.Method != http.MethodPost || r.URL.RawQuery != "" {
+			t.Errorf("legacy request = %s %s, want POST with no query", r.Method, r.URL)
+		}
 	}
 }
 
-// TestPing_LegacyTokenAuth_TransportErrorRedactsToken covers the exact call
-// path the provider's connectivity check uses (provider.go calls
-// apiClient.Ping, then surfaces err.Error() verbatim in a diagnostic when
-// the failure isn't classified as TLS-related).
+func TestDoGet_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
+	const secretToken = "super-secret-token-abc123"
+	var seen []*http.Request
+	c := failingTransportClient(t, secretToken, &seen)
+	_, err := c.doGet(context.Background(), "/api/zones/list", nil)
+	assertLegacyTransportFailure(t, err, secretToken, seen)
+}
+
 func TestPing_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
 	const secretToken = "super-secret-ping-token"
-
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		if err := json.NewEncoder(w).Encode(APIResponse{Status: "ok"}); err != nil {
-			t.Fatalf("failed to encode response: %v", err)
-		}
-	})
-	ts.Close()
-
-	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	var seen []*http.Request
+	c := failingTransportClient(t, secretToken, &seen)
 	err := c.Ping(context.Background())
-	if err == nil {
-		t.Fatal("expected a transport error against a closed server")
-	}
-	if strings.Contains(err.Error(), secretToken) {
-		t.Errorf("error message leaks the API token: %v", err)
-	}
+	assertLegacyTransportFailure(t, err, secretToken, seen)
 }
 
 func TestDoGet_APIError(t *testing.T) {

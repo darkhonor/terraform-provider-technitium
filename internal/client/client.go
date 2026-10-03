@@ -54,12 +54,9 @@ type ClientConfig struct {
 	TLSServerName  string
 	TLSMinVersion  string // "1.2" or "1.3", default: "1.3"
 	TimeoutSeconds int    // HTTP client timeout, default: 30
-	// LegacyTokenAuth sends the API token via the "token" query parameter
-	// (GET) or form body (POST) instead of an "Authorization: Bearer"
-	// header. Technitium DNS Server versions before 15.0 only understand
-	// the query-string/form form; the header is otherwise preferred
-	// because query strings are routinely captured in cleartext by
-	// reverse-proxy access logs. Default: false.
+	// LegacyTokenAuth sends every request as a POST with the API token in a
+	// "token" form field instead of an "Authorization: Bearer" header, for
+	// Technitium DNS Server versions before 15.0. Default: false.
 	LegacyTokenAuth bool
 }
 
@@ -254,13 +251,8 @@ func loadCACerts(certFile, certDir string) (*x509.CertPool, error) {
 	return pool, nil
 }
 
-// redactURL returns rawURL with its query string stripped. Use it wherever
-// a request URL might end up in an error message: in LegacyTokenAuth mode
-// the "token" query parameter carries the live API token, and query
-// strings never carry anything of similarly sensitive shape in the default
-// header-auth path, so stripping unconditionally is safe on both. If
-// rawURL fails to parse, a fixed placeholder is returned rather than the
-// unparsed (and therefore unredacted) string.
+// redactURL returns rawURL with its query string stripped, or a fixed
+// placeholder if rawURL does not parse.
 func redactURL(rawURL string) string {
 	u, err := url.Parse(rawURL)
 	if err != nil {
@@ -274,9 +266,8 @@ func redactURL(rawURL string) string {
 // an error safe to surface to the user (e.g. via a Terraform diagnostic).
 // http.Client.Do returns a *url.Error whose Error() method embeds the full
 // request URL verbatim, including the query string — so wrapping it
-// directly with %w would still render that URL (and, in LegacyTokenAuth
-// mode, the API token it carries) whenever the resulting error's Error()
-// is later called. This rebuilds the message from a query-stripped URL and
+// directly with %w would still render that URL whenever the resulting
+// error's Error() is later called. This rebuilds the message from a query-stripped URL and
 // wraps only the innermost cause, so errors.As-based classification (e.g.
 // ClassifyTLSError) keeps working against the unwrapped chain.
 func redactTransportErr(path string, err error) error {
@@ -331,17 +322,11 @@ func (c *Client) redactSecrets(s string) string {
 }
 
 // doGet performs a GET request with the parameters in the query string.
-// Writes use doPost.
-//
-// The API token is sent as an "Authorization: Bearer" header by default. Set
-// LegacyTokenAuth on the client to fall back to the "token" query parameter
-// for Technitium DNS Server versions before 15.0.
+// Writes use doPost. In LegacyTokenAuth mode it delegates to doPost so the
+// token never appears in a URL.
 func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*APIResponse, error) {
-	if params == nil {
-		params = url.Values{}
-	}
 	if c.legacyTokenAuth {
-		params.Set("token", c.token)
+		return c.doPost(ctx, path, params)
 	}
 
 	reqURL := c.baseURL + path
@@ -352,9 +337,7 @@ func (c *Client) doGet(ctx context.Context, path string, params url.Values) (*AP
 	if err != nil {
 		return nil, redactRequestErr(path, err)
 	}
-	if !c.legacyTokenAuth {
-		req.Header.Set("Authorization", "Bearer "+c.token)
-	}
+	req.Header.Set("Authorization", "Bearer "+c.token)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, redactTransportErr(path, err)

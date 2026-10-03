@@ -13,10 +13,6 @@ import (
 	"testing"
 )
 
-// A server_url that fails to parse makes http.NewRequestWithContext return a
-// *url.Error whose Error() embeds the raw URL -- query string and, in
-// LegacyTokenAuth mode, the token included. Every request-creation site must
-// redact it the same way the transport-error path does (GHSA-27mx-6hfq-f887).
 func TestRequestCreationError_RedactsToken(t *testing.T) {
 	const secretToken = "super-secret-create-token"
 
@@ -65,15 +61,15 @@ func TestLogin_RequestCreationError_RedactsURL(t *testing.T) {
 	}
 }
 
-// Reverse proxies and WAFs routinely echo the request URI in their error
-// pages. In LegacyTokenAuth mode that URI carries the token, so a non-200 body
-// must never be quoted verbatim into an error.
+// Reverse proxies and WAFs routinely echo the request URI or form body in
+// their error pages. In LegacyTokenAuth mode the form body carries the token.
 func TestParseResponse_NonOKBodyRedactsToken(t *testing.T) {
 	const secretToken = "super-secret/echo+token"
 
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		w.WriteHeader(http.StatusBadGateway)
-		_, _ = fmt.Fprintf(w, "<html>502 Bad Gateway for %s (raw token %s)</html>", r.URL.RequestURI(), secretToken)
+		_, _ = fmt.Fprintf(w, "<html>502 Bad Gateway for %s %s (raw token %s)</html>", r.URL.RequestURI(), r.PostForm.Encode(), secretToken)
 	})
 	defer ts.Close()
 
@@ -176,4 +172,18 @@ func TestAPIErrorMessage_RedactsCredentials(t *testing.T) {
 			t.Errorf("password leaked: %v", err)
 		}
 	})
+}
+
+func TestRedactTransportErr_StripsTokenFromURL(t *testing.T) {
+	err := redactTransportErr("/api/x", &url.Error{Op: "Get", URL: "http://h/api/x?token=SECRET-TOKEN", Err: errors.New("connection refused")})
+	if strings.Contains(err.Error(), "SECRET-TOKEN") {
+		t.Errorf("token not stripped: %v", err)
+	}
+}
+
+func TestRedactRequestErr_StripsTokenFromURL(t *testing.T) {
+	err := redactRequestErr("/api/x", &url.Error{Op: "parse", URL: "http://h/api/x?token=SECRET-TOKEN", Err: errors.New("invalid character")})
+	if strings.Contains(err.Error(), "SECRET-TOKEN") {
+		t.Errorf("token not stripped: %v", err)
+	}
 }

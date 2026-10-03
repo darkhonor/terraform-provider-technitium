@@ -300,3 +300,121 @@ func TestRecordGet_StaysGETWithIdentifiersInQuery(t *testing.T) {
 		t.Errorf("token in URL %q", r.rawURL)
 	}
 }
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func readCases(ctx context.Context) []struct {
+	name string
+	call func(*Client)
+} {
+	return []struct {
+		name string
+		call func(*Client)
+	}{
+		{"ZoneList", func(c *Client) { _, _ = c.ZoneList(ctx) }},
+		{"ZoneOptionsGet", func(c *Client) { _, _ = c.ZoneOptionsGet(ctx, "example.test") }},
+		{"ZoneDNSSECPropertiesGet", func(c *Client) { _, _ = c.ZoneDNSSECPropertiesGet(ctx, "example.test") }},
+		{"ZoneDNSSECViewDS", func(c *Client) { _, _ = c.ZoneDNSSECViewDS(ctx, "example.test") }},
+		{"BlockedZoneExists", func(c *Client) { _, _ = c.BlockedZoneExists(ctx, "bad.example.test") }},
+		{"AllowedZoneExists", func(c *Client) { _, _ = c.AllowedZoneExists(ctx, "ok.example.test") }},
+		{"UserGet", func(c *Client) { _, _ = c.UserGet(ctx, "alice") }},
+		{"SessionsList", func(c *Client) { _, _ = c.SessionsList(ctx) }},
+		{"GroupList", func(c *Client) { _, _ = c.GroupList(ctx) }},
+		{"ClusterState", func(c *Client) { _, _ = c.ClusterState(ctx) }},
+		{"SSOGet", func(c *Client) { _, _ = c.SSOGet(ctx) }},
+		{"SettingsGet", func(c *Client) { _, _ = c.SettingsGet(ctx) }},
+		{"Ping", func(c *Client) { _ = c.Ping(ctx) }},
+		{"RecordGet", func(c *Client) { _, _ = c.RecordGet(ctx, "h.example.test", "example.test") }},
+	}
+}
+
+func TestReads_LegacyAreFormPOST(t *testing.T) {
+	const token = "secret-test-token"
+	for _, tc := range readCases(context.Background()) {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, got := captureServer(t)
+			c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: token, LegacyTokenAuth: true})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.call(c)
+			if len(*got) != 1 {
+				t.Fatalf("requests = %d, want 1", len(*got))
+			}
+			r := (*got)[0]
+			if r.method != http.MethodPost {
+				t.Errorf("method = %s, want POST", r.method)
+			}
+			if r.rawQuery != "" {
+				t.Errorf("query string = %q, want empty", r.rawQuery)
+			}
+			if r.form.Get("token") != token {
+				t.Errorf("token not in body")
+			}
+			if r.auth != "" {
+				t.Errorf("unexpected Authorization header")
+			}
+		})
+	}
+}
+
+func TestReads_BearerAreGETWithoutToken(t *testing.T) {
+	const token = "secret-test-token"
+	for _, tc := range readCases(context.Background()) {
+		t.Run(tc.name, func(t *testing.T) {
+			srv, got := captureServer(t)
+			c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: token})
+			if err != nil {
+				t.Fatal(err)
+			}
+			tc.call(c)
+			if len(*got) != 1 {
+				t.Fatalf("requests = %d, want 1", len(*got))
+			}
+			r := (*got)[0]
+			if r.method != http.MethodGet {
+				t.Errorf("method = %s, want GET", r.method)
+			}
+			if strings.Contains(r.rawURL, token) {
+				t.Errorf("token in URL %q", r.rawURL)
+			}
+			if r.auth != "Bearer "+token {
+				t.Errorf("Authorization = %q", r.auth)
+			}
+		})
+	}
+}
+
+func TestPing_LegacyFallbackIsFormPOST(t *testing.T) {
+	var mu sync.Mutex
+	var got []capturedRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		mu.Lock()
+		got = append(got, capturedRequest{method: r.Method, path: r.URL.Path, rawQuery: r.URL.RawQuery, form: r.PostForm})
+		mu.Unlock()
+		if r.URL.Path == "/api/user/session/get" {
+			_, _ = fmt.Fprint(w, `{"status":"error","errorMessage":"not supported"}`)
+			return
+		}
+		_, _ = fmt.Fprint(w, `{"status":"ok","response":{}}`)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := NewClient(ClientConfig{BaseURL: srv.URL, Token: "legacy-token", LegacyTokenAuth: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Ping(context.Background()); err != nil {
+		t.Fatalf("Ping: %v", err)
+	}
+	if len(got) != 2 || got[1].path != "/api/settings/get" {
+		t.Fatalf("requests = %+v, want session/get then settings/get", got)
+	}
+	for _, r := range got {
+		if r.method != http.MethodPost || r.rawQuery != "" || r.form.Get("token") != "legacy-token" {
+			t.Errorf("%s: method=%s query=%q token-in-body=%v", r.path, r.method, r.rawQuery, r.form.Get("token") != "")
+		}
+	}
+}

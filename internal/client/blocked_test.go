@@ -45,15 +45,14 @@ func TestExportFilteredZones_TokenViaBearerHeader(t *testing.T) {
 	}
 }
 
-// TestExportFilteredZones_LegacyTokenAuth verifies that setting
-// LegacyTokenAuth preserves the pre-15.0 behavior of sending the token as a
-// query parameter.
 func TestExportFilteredZones_LegacyTokenAuth(t *testing.T) {
-	var gotAuthHeader string
-	var gotToken string
+	var gotAuthHeader, gotToken, gotMethod, gotRawQuery string
 	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
 		gotAuthHeader = r.Header.Get("Authorization")
-		gotToken = r.URL.Query().Get("token")
+		gotMethod = r.Method
+		gotRawQuery = r.URL.RawQuery
+		gotToken = r.PostForm.Get("token")
 		_, _ = w.Write([]byte("example.com\n"))
 	})
 	defer ts.Close()
@@ -63,38 +62,23 @@ func TestExportFilteredZones_LegacyTokenAuth(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
+	if gotMethod != http.MethodPost || gotRawQuery != "" {
+		t.Errorf("legacy export = %s with query %q, want POST with no query", gotMethod, gotRawQuery)
+	}
 	if gotToken != "legacy-token" {
-		t.Errorf("expected token=legacy-token in query params, got %q", gotToken)
+		t.Errorf("expected token=legacy-token in the form body, got %q", gotToken)
 	}
 	if gotAuthHeader != "" {
 		t.Errorf("expected no Authorization header in legacy mode, got %q", gotAuthHeader)
 	}
 }
 
-// TestExportFilteredZones_LegacyTokenAuth_TransportErrorRedactsToken is a
-// regression test for a token leak via *url.Error: exportFilteredZones
-// builds the request URL directly (it bypasses doGet because the export
-// endpoint returns plain text), so in LegacyTokenAuth mode the token
-// travels in that URL's query string. http.Client.Do wraps transport
-// failures in a *url.Error whose Error() method embeds the full request
-// URL verbatim, including the query string — without redaction, the token
-// would land in the error surfaced to the caller.
 func TestExportFilteredZones_LegacyTokenAuth_TransportErrorRedactsToken(t *testing.T) {
 	const secretToken = "super-secret-export-token"
-
-	ts := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("example.com\n"))
-	})
-	ts.Close() // closed immediately: any request now fails at the transport layer
-
-	c, _ := NewClient(ClientConfig{BaseURL: ts.URL, Token: secretToken, LegacyTokenAuth: true})
+	var seen []*http.Request
+	c := failingTransportClient(t, secretToken, &seen)
 	_, err := exportFilteredZones(context.Background(), c, "/api/blocked/export")
-	if err == nil {
-		t.Fatal("expected a transport error against a closed server")
-	}
-	if strings.Contains(err.Error(), secretToken) {
-		t.Errorf("error message leaks the API token: %v", err)
-	}
+	assertLegacyTransportFailure(t, err, secretToken, seen)
 }
 
 func TestExportFilteredZones_Non200IsErrorAndRedacted(t *testing.T) {
@@ -188,7 +172,8 @@ func TestExportFilteredZones_BOMPrefixedEnvelopeIsAPIError(t *testing.T) {
 func TestExportFilteredZones_HTMLOn200RedactsToken(t *testing.T) {
 	const token = "export-secret-token"
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(w, "<html>Sign in to reach %s</html>", r.URL.RequestURI())
+		_ = r.ParseForm()
+		_, _ = fmt.Fprintf(w, "<html>Sign in to reach %s with %s</html>", r.URL.RequestURI(), r.PostForm.Encode())
 	})
 	defer srv.Close()
 	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: token, LegacyTokenAuth: true})
@@ -204,7 +189,8 @@ func TestExportFilteredZones_HTMLOn200RedactsToken(t *testing.T) {
 func TestExportFilteredZones_JSONOn200RedactsToken(t *testing.T) {
 	const token = "export-secret-token"
 	srv := newTestServer(t, func(w http.ResponseWriter, r *http.Request) {
-		_, _ = fmt.Fprintf(w, `{"status":"ok","uri":%q}`, r.URL.RequestURI())
+		_ = r.ParseForm()
+		_, _ = fmt.Fprintf(w, `{"status":"ok","uri":%q,"form":%q}`, r.URL.RequestURI(), r.PostForm.Encode())
 	})
 	defer srv.Close()
 	c, _ := NewClient(ClientConfig{BaseURL: srv.URL, Token: token, LegacyTokenAuth: true})

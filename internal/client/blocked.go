@@ -26,19 +26,23 @@ type filteredZoneListResponse struct {
 // per line. It bypasses doGet because the export endpoint returns plain text,
 // not JSON.
 //
-// The API token is sent as an "Authorization: Bearer" header by default; set
-// c.legacyTokenAuth to fall back to the "token" query parameter for
-// Technitium DNS Server versions before 15.0.
+// The API token is sent as an "Authorization: Bearer" header by default; in
+// LegacyTokenAuth mode the request is a POST with the token as a form field.
 func exportFilteredZones(ctx context.Context, c *Client, path string) ([]string, error) {
-	reqURL := fmt.Sprintf("%s%s", c.baseURL, path)
+	reqURL := c.baseURL + path
+	var req *http.Request
+	var err error
 	if c.legacyTokenAuth {
-		reqURL = fmt.Sprintf("%s?token=%s", reqURL, url.QueryEscape(c.token))
+		req, err = http.NewRequestWithContext(ctx, http.MethodPost, reqURL, strings.NewReader(url.Values{"token": {c.token}}.Encode()))
+	} else {
+		req, err = http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
 		return nil, redactRequestErr(path, err)
 	}
-	if !c.legacyTokenAuth {
+	if c.legacyTokenAuth {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	} else {
 		req.Header.Set("Authorization", "Bearer "+c.token)
 	}
 	resp, err := c.httpClient.Do(req)

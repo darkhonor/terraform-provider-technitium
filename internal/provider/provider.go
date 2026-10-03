@@ -152,7 +152,7 @@ func (p *TechnitiumProvider) Schema(_ context.Context, _ provider.SchemaRequest,
 				},
 			},
 			"legacy_token_auth": schema.BoolAttribute{
-				Description: "Send the API token as a \"token\" query parameter/form field instead of an " +
+				Description: "Send every request as a POST with the API token in a \"token\" form field instead of an " +
 					"\"Authorization: Bearer\" header. Only needed for Technitium DNS Server versions before " +
 					"15.0, which do not support the Bearer header form. Leaving this at its default sends the " +
 					"token via header, keeping it out of URLs and any intermediary's access logs. " +
@@ -724,7 +724,7 @@ func pingFailureDetail(serverURL string, err error, legacyTokenAuth bool) string
 		detail += "\n\nIf the token is valid and your Technitium DNS Server is older than 15.0, " +
 			"the server does not accept the Authorization: Bearer header this provider sends " +
 			"by default. Set legacy_token_auth = true in the provider block (or " +
-			"TECHNITIUM_LEGACY_TOKEN_AUTH=true) to send the token as a query parameter or form field instead."
+			"TECHNITIUM_LEGACY_TOKEN_AUTH=true) to send the token as a form field instead."
 	}
 	return detail
 }

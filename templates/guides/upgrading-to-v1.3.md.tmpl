@@ -54,9 +54,10 @@ provider "technitium" {
 }
 ```
 
-~> `legacy_token_auth` restores the old token handling: the token travels in read request URLs
-and in the form body of writes. Treat it as a bridge while you upgrade the server, not a
-permanent setting.
+~> With `legacy_token_auth`, every request, reads included, is sent as a `POST` with the token
+in the form body, so the token never appears in a URL. A proxy in front of a legacy server
+must allow `POST` on `/api/*`. Treat the setting as a bridge while you upgrade the server, not
+a permanent setting.
 
 ## Change 2: forwarder records that cannot be told apart are refused
 
@@ -85,13 +86,15 @@ This change does not affect forwarders that already differ by `value` or `protoc
 Every API call that changes the server (records, zones, DNSSEC, blocked and allowed zones,
 users, API tokens, sessions, cluster) now sends its parameters as a form-encoded `POST` body
 instead of a `GET` query string, so record values, comments, and FWD proxy credentials no
-longer appear in request URLs. Reads are unchanged.
+longer appear in request URLs. Reads are unchanged, except with `legacy_token_auth`, where
+they are `POST` too.
 
 * A reverse proxy or WAF in front of the server must allow `POST` on `/api/*`.
 * Point `server_url` at the final scheme and host. An HTTP client follows a 301, 302, or 303
   redirect for a `POST` by re-sending it as a `GET` without the body, so a write through a
   redirect (for example `http://` to `https://`) fails with a "Parameter ... missing" or
-  `invalid-token` error.
+  `invalid-token` error. With `legacy_token_auth`, reads fail the same way, including the
+  provider's connectivity check.
 
 ## Upgrading Technitium to 15.5 or later
 
