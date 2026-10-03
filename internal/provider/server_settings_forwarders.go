@@ -97,9 +97,8 @@ func (forwarderProtocolModifier) PlanModifyString(ctx context.Context, req planm
 		"forwarder_protocol has no effect unless forwarders is set in the same configuration.")
 }
 
-func omitUnmanagedForwarders(params map[string]string, configForwarders types.List) {
-	if configForwarders.IsNull() {
-		delete(params, "forwarders")
+func omitUnmanagedForwarders(params map[string]string, forwarders types.List) {
+	if forwarders.IsNull() {
 		delete(params, "forwarderProtocol")
 	}
 }

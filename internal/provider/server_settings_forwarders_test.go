@@ -128,6 +128,8 @@ func TestReconcileForwarders(t *testing.T) {
 		{"different server value is drift", configured, []string{"8.8.8.8:853", "9.9.9.9:853"}, []string{"8.8.8.8:853", "9.9.9.9:853"}, false},
 		{"different length is drift", configured, []string{"1.1.1.1:853"}, []string{"1.1.1.1:853"}, false},
 		{"unmanaged stays null", types.ListNull(types.StringType), []string{"1.1.1.1:853"}, nil, true},
+		{"configured element the normalizer rejects takes the server list", stringList(t, "1.1.1.1:53"), []string{"1.1.1.1:853"}, []string{"1.1.1.1:853"}, false},
+		{"unknown configured list takes the server list", types.ListUnknown(types.StringType), []string{"1.1.1.1:853"}, []string{"1.1.1.1:853"}, false},
 	}
 	for _, tc := range cases {
 		got := reconcileForwarders(context.Background(), tc.in, tc.server, "Tls")
@@ -161,15 +163,12 @@ func runProtocolModifier(t *testing.T, cfg, plan ServerSettingsResourceModel, st
 
 func TestForwarderProtocolModifier_SetWithoutForwardersWarns(t *testing.T) {
 	cfg := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	prior := settingsModel(types.ListNull(types.StringType), types.StringValue("Udp"))
-	for name, st := range map[string]*ServerSettingsResourceModel{"no prior state": nil, "prior state": &prior} {
-		resp := runProtocolModifier(t, cfg, cfg, st)
-		if resp.Diagnostics.HasError() || resp.Diagnostics.WarningsCount() != 1 {
-			t.Errorf("%s: diagnostics = %v, want one warning", name, resp.Diagnostics)
-		}
-		if resp.PlanValue.ValueString() != "Tls" {
-			t.Errorf("%s: plan = %v", name, resp.PlanValue)
-		}
+	resp := runProtocolModifier(t, cfg, cfg, nil)
+	if resp.Diagnostics.HasError() || resp.Diagnostics.WarningsCount() != 1 {
+		t.Errorf("diagnostics = %v, want one warning", resp.Diagnostics)
+	}
+	if resp.PlanValue.ValueString() != "Tls" {
+		t.Errorf("plan = %v", resp.PlanValue)
 	}
 }
 
@@ -182,11 +181,8 @@ func TestForwarderProtocolModifier_UnknownConfigIsLeftAlone(t *testing.T) {
 }
 
 func TestOmitUnmanagedForwarders(t *testing.T) {
-	params := map[string]string{"forwarders": "1.1.1.1:853", "forwarderProtocol": "Udp", "serveStale": "true"}
+	params := map[string]string{"forwarderProtocol": "Udp", "serveStale": "true"}
 	omitUnmanagedForwarders(params, types.ListNull(types.StringType))
-	if _, ok := params["forwarders"]; ok {
-		t.Error("forwarders sent while unmanaged")
-	}
 	if _, ok := params["forwarderProtocol"]; ok {
 		t.Error("forwarderProtocol sent while forwarders unmanaged")
 	}

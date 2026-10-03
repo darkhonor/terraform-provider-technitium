@@ -73,9 +73,9 @@ Manages Technitium DNS Server global settings.
 
 ### Forwarding
 
-* `forwarders` - (Optional, List of String) Forwarder addresses. STIG BIND-9X-001360 (SC-20). Technitium stores each forwarder in a canonical form for `forwarder_protocol` (for example `1.1.1.1` becomes `1.1.1.1:853` with `Tls`); state keeps your spelling while the stored value is its canonical form. A forwarder Technitium would store differently is rejected at plan time: an `https://` URL with a protocol other than `Https`, port `53` with `Tls`, `Quic` or `Https`, or port `853` with `Udp`, `Tcp` or `Https`.
+* `forwarders` - (Optional, List of String) Forwarder addresses. STIG BIND-9X-001360 (SC-20). Technitium stores each forwarder in a canonical form for `forwarder_protocol` (for example `1.1.1.1` becomes `1.1.1.1:853` with `Tls`); state keeps your spelling while the stored value is its canonical form. A forwarder Technitium would store differently is rejected at plan time, for example an `https://` URL with a protocol other than `Https`, port `53` with `Tls`, `Quic` or `Https`, or port `853` with `Udp`, `Tcp` or `Https`.
 
-* `forwarder_protocol` - (Optional, String) Forwarder transport protocol. STIG SC-8. Valid values: `Udp`, `Tcp`, `Tls`, `Https`, `Quic`. Default: `"Tls"`. Applies only when `forwarders` is set in the same configuration; set without `forwarders`, it has no effect and the plan shows a warning.
+* `forwarder_protocol` - (Optional, String) Forwarder transport protocol. STIG SC-8. Valid values: `Udp`, `Tcp`, `Tls`, `Https`, `Quic`. Default: `"Tls"`. Applies only when `forwarders` is set in the same configuration; set without `forwarders`, it has no effect and the plan shows a warning. While `forwarders` is not set, the value in state is the configured or default value, not read from the server.
 
 * `serve_stale` - (Optional, Boolean) Serve stale cached records when upstream resolvers are unavailable. Default: `true`.
 

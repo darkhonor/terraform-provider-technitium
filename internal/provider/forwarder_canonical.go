@@ -16,16 +16,18 @@ import (
 var forwarderPortPattern = regexp.MustCompile(`^[1-9][0-9]*$`)
 var forwarderDigitsAndDots = regexp.MustCompile(`^[0-9.]+$`)
 
+var forwarderProtocols = map[string]string{"udp": "Udp", "tcp": "Tcp", "tls": "Tls", "https": "Https", "quic": "Quic"}
+
 func canonicalForwarder(input, protocol string) (string, error) {
 	s := strings.TrimSpace(input)
 	if s == "" || strings.Contains(s, ",") {
 		return "", fmt.Errorf("forwarder %q must be a single address", input)
 	}
-	switch protocol {
-	case "Udp", "Tcp", "Tls", "Https", "Quic":
-	default:
+	canonicalProtocol, ok := forwarderProtocols[strings.ToLower(protocol)]
+	if !ok {
 		return "", fmt.Errorf("unsupported forwarder_protocol %q", protocol)
 	}
+	protocol = canonicalProtocol
 	udp := protocol == "Udp"
 
 	base, suffix := s, ""
@@ -36,7 +38,7 @@ func canonicalForwarder(input, protocol string) (string, error) {
 			return "", fmt.Errorf("forwarder %q: the address in parentheses must be an IP address", input)
 		}
 		if !udp {
-			if addr.Is6() && !addr.Is4In6() {
+			if addr.Is6() {
 				suffix = " ([" + addr.String() + "])"
 			} else {
 				suffix = " (" + addr.String() + ")"
@@ -64,7 +66,7 @@ func canonicalForwarder(input, protocol string) (string, error) {
 	}
 	if port != "" {
 		n, err := strconv.Atoi(port)
-		if !forwarderPortPattern.MatchString(port) || err != nil || n > 65535 {
+		if err != nil || n < 1 || n > 65535 || (!udp && !forwarderPortPattern.MatchString(port)) {
 			return "", fmt.Errorf("forwarder %q: invalid port %q", input, port)
 		}
 	}
@@ -83,6 +85,8 @@ func canonicalForwarder(input, protocol string) (string, error) {
 			host = addr.String()
 		} else if forwarderDigitsAndDots.MatchString(host) {
 			return "", fmt.Errorf("forwarder %q: %q is not a valid IPv4 address", input, host)
+		} else {
+			host = strings.TrimSuffix(host, ".")
 		}
 	}
 

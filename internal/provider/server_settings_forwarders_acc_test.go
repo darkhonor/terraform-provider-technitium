@@ -43,6 +43,22 @@ func TestAccServerSettingsResource_forwardersCanonical(t *testing.T) {
 				Check:  resource.TestCheckResourceAttr("technitium_server_settings.main", "forwarders.0", "2606:4700:4700::1111"),
 			},
 			{
+				Config: testAccServerSettingsForwarders(`["2606:4700:4700::1111"]`, "Udp"),
+				Check:  resource.TestCheckResourceAttr("technitium_server_settings.main", "forwarder_protocol", "Udp"),
+			},
+			{
+				Config: testAccProviderHCL() + `resource "technitium_server_settings" "main" {}
+`,
+				Check: resource.TestCheckNoResourceAttr("technitium_server_settings.main", "forwarders.#"),
+			},
+			{
+				Config: testAccProviderHCL() + `resource "technitium_server_settings" "main" {}
+`,
+				ConfigPlanChecks: resource.ConfigPlanChecks{
+					PreApply: []plancheck.PlanCheck{plancheck.ExpectEmptyPlan()},
+				},
+			},
+			{
 				Config:      testAccServerSettingsForwarders(`["1.1.1.1:53"]`, "Tls"),
 				ExpectError: regexp.MustCompile(`port 53`),
 			},

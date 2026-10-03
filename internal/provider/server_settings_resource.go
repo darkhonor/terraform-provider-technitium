@@ -210,7 +210,6 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 				Optional:      true,
 				Computed:      true,
 				Default:       stringdefault.StaticString("Tls"),
-				Validators:    []validator.String{stringvalidator.OneOf("Udp", "Tcp", "Tls", "Https", "Quic")},
 				PlanModifiers: []planmodifier.String{forwarderProtocolModifier{}},
 			},
 			"enable_dns_over_tls": schema.BoolAttribute{
@@ -345,8 +344,6 @@ func (r *ServerSettingsResource) ConfigValidators(ctx context.Context) []resourc
 func (r *ServerSettingsResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var plan ServerSettingsResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	var configForwarders types.List
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("forwarders"), &configForwarders)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -354,7 +351,7 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 	plan.ID = types.StringValue("server-settings")
 
 	params := r.buildParams(ctx, &plan)
-	omitUnmanagedForwarders(params, configForwarders)
+	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error setting server settings", err.Error())
@@ -388,14 +385,12 @@ func (r *ServerSettingsResource) Read(ctx context.Context, req resource.ReadRequ
 func (r *ServerSettingsResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var plan ServerSettingsResourceModel
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &plan)...)
-	var configForwarders types.List
-	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("forwarders"), &configForwarders)...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	params := r.buildParams(ctx, &plan)
-	omitUnmanagedForwarders(params, configForwarders)
+	omitUnmanagedForwarders(params, plan.Forwarders)
 	if len(params) > 0 {
 		if err := r.client.SettingsSet(ctx, params); err != nil {
 			resp.Diagnostics.AddError("Error updating server settings", err.Error())
@@ -486,8 +481,6 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	model.BlockingAnswerTTL = types.Int64Value(int64(settings.BlockingAnswerTTL))
 	model.BlockListUpdateIntervalHours = types.Int64Value(int64(settings.BlockListUpdateIntervalHours))
 	model.ServeStale = types.BoolValue(settings.ServeStale)
-	// ForwarderProtocol: the API only persists this when forwarders are configured.
-	// If no forwarders, keep the planned value to avoid drift.
 	if (len(settings.Forwarders) > 0 && !model.Forwarders.IsNull()) || model.ForwarderProtocol.IsNull() || model.ForwarderProtocol.IsUnknown() {
 		model.ForwarderProtocol = types.StringValue(settings.ForwarderProtocol)
 	}
