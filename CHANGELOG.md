@@ -80,6 +80,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `technitium_server_settings`: a forwarder written in a form other than the one Technitium
+  stores (for example `1.1.1.1` with `forwarder_protocol = "Tls"`, stored as `1.1.1.1:853`) no
+  longer fails with "Provider produced inconsistent result after apply"; state keeps the
+  configured spelling while the stored value is its canonical form. A forwarder the server
+  would silently change (an `https://` URL with a protocol other than `Https`, or port 53 or
+  853 with the other protocol family) is now rejected at plan time. `forwarder_protocol` set
+  without `forwarders` has no effect, and the plan now warns about it. (#134)
 - `technitium_record`: refresh no longer aborts when the record's parent
   zone is gone ("No such zone was found"); the record is removed from state
   and planned for recreation (#88).

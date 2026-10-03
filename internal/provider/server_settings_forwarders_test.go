@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
@@ -71,78 +72,17 @@ func newForwardersFixture(t *testing.T, cfg, plan ServerSettingsResourceModel, s
 	return tfsdk.Config{Schema: s, Raw: c.Raw}, p, st
 }
 
-func runForwardersModifier(t *testing.T, cfg, plan ServerSettingsResourceModel, state *ServerSettingsResourceModel) *planmodifier.ListResponse {
+func runForwardersValidator(t *testing.T, cfg ServerSettingsResourceModel) *validator.ListResponse {
 	t.Helper()
-	config, p, st := newForwardersFixture(t, cfg, plan, state)
-	stateValue := types.ListNull(types.StringType)
-	if state != nil {
-		stateValue = state.Forwarders
-	}
-	req := planmodifier.ListRequest{
-		Path: path.Root("forwarders"), Config: config, Plan: p, State: st,
-		ConfigValue: cfg.Forwarders, PlanValue: plan.Forwarders, StateValue: stateValue,
-	}
-	resp := &planmodifier.ListResponse{PlanValue: req.PlanValue}
-	canonicalForwardersModifier{}.PlanModifyList(context.Background(), req, resp)
+	config, _, _ := newForwardersFixture(t, cfg, cfg, nil)
+	req := validator.ListRequest{Path: path.Root("forwarders"), Config: config, ConfigValue: cfg.Forwarders}
+	resp := &validator.ListResponse{}
+	forwardersValidator{}.ValidateList(context.Background(), req, resp)
 	return resp
 }
 
-func listStrings(t *testing.T, l types.List) []string {
-	t.Helper()
-	var out []string
-	if d := l.ElementsAs(context.Background(), &out, false); d.HasError() {
-		t.Fatal(d)
-	}
-	return out
-}
-
-func TestCanonicalForwardersModifier_PlansCanonicalList(t *testing.T) {
-	cfg := settingsModel(stringList(t, "1.1.1.1", "9.9.9.9"), types.StringValue("Tls"))
-	resp := runForwardersModifier(t, cfg, cfg, nil)
-	if resp.Diagnostics.HasError() {
-		t.Fatal(resp.Diagnostics)
-	}
-	if got := strings.Join(listStrings(t, resp.PlanValue), ","); got != "1.1.1.1:853,9.9.9.9:853" {
-		t.Errorf("plan = %s", got)
-	}
-}
-
-func TestCanonicalForwardersModifier_ConfigNullPlansPriorState(t *testing.T) {
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringNull())
-	plan := settingsModel(types.ListNull(types.StringType), types.StringValue("Udp"))
-	prior := settingsModel(stringList(t, "1.1.1.1:853"), types.StringValue("Tls"))
-	resp := runForwardersModifier(t, cfg, plan, &prior)
-	if got := strings.Join(listStrings(t, resp.PlanValue), ","); got != "1.1.1.1:853" {
-		t.Errorf("plan = %s, want prior state", got)
-	}
-}
-
-func TestCanonicalForwardersModifier_ConfigNullNoStateIsUnknown(t *testing.T) {
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringNull())
-	plan := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	if resp := runForwardersModifier(t, cfg, plan, nil); !resp.PlanValue.IsUnknown() {
-		t.Errorf("plan = %v, want unknown", resp.PlanValue)
-	}
-}
-
-func TestCanonicalForwardersModifier_UnknownProtocolIsUnknown(t *testing.T) {
-	cfg := settingsModel(stringList(t, "1.1.1.1"), types.StringUnknown())
-	if resp := runForwardersModifier(t, cfg, cfg, nil); !resp.PlanValue.IsUnknown() {
-		t.Errorf("plan = %v, want unknown", resp.PlanValue)
-	}
-}
-
-func TestCanonicalForwardersModifier_UnknownElementIsUnknown(t *testing.T) {
-	l, _ := types.ListValue(types.StringType, []attr.Value{types.StringValue("1.1.1.1"), types.StringUnknown()})
-	cfg := settingsModel(l, types.StringValue("Tls"))
-	if resp := runForwardersModifier(t, cfg, cfg, nil); !resp.PlanValue.IsUnknown() {
-		t.Errorf("plan = %v, want unknown", resp.PlanValue)
-	}
-}
-
-func TestCanonicalForwardersModifier_LossyInputIsError(t *testing.T) {
-	cfg := settingsModel(stringList(t, "9.9.9.9", "1.1.1.1:53"), types.StringValue("Tls"))
-	resp := runForwardersModifier(t, cfg, cfg, nil)
+func TestForwardersValidator_LossyInputIsErrorAtIndex(t *testing.T) {
+	resp := runForwardersValidator(t, settingsModel(stringList(t, "9.9.9.9", "1.1.1.1:53"), types.StringValue("Tls")))
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected an error")
 	}
@@ -153,6 +93,53 @@ func TestCanonicalForwardersModifier_LossyInputIsError(t *testing.T) {
 	}
 	if !strings.Contains(d.Detail(), "port 53") {
 		t.Errorf("detail = %q", d.Detail())
+	}
+}
+
+func TestForwardersValidator_NullProtocolUsesTlsDefault(t *testing.T) {
+	if resp := runForwardersValidator(t, settingsModel(stringList(t, "1.1.1.1:53"), types.StringNull())); !resp.Diagnostics.HasError() {
+		t.Error("expected the Tls default to reject port 53")
+	}
+}
+
+func TestForwardersValidator_AcceptsValidAndSkipsUnknown(t *testing.T) {
+	if resp := runForwardersValidator(t, settingsModel(stringList(t, "1.1.1.1", "dns.example.test:853"), types.StringValue("Tls"))); resp.Diagnostics.HasError() {
+		t.Errorf("unexpected: %v", resp.Diagnostics)
+	}
+	if resp := runForwardersValidator(t, settingsModel(stringList(t, "1.1.1.1:53"), types.StringUnknown())); resp.Diagnostics.HasError() {
+		t.Errorf("unknown protocol must not be validated: %v", resp.Diagnostics)
+	}
+	l, _ := types.ListValue(types.StringType, []attr.Value{types.StringValue("1.1.1.1"), types.StringUnknown()})
+	if resp := runForwardersValidator(t, settingsModel(l, types.StringValue("Tls"))); resp.Diagnostics.HasError() {
+		t.Errorf("unknown element must be skipped: %v", resp.Diagnostics)
+	}
+}
+
+func TestReconcileForwarders(t *testing.T) {
+	configured := stringList(t, "1.1.1.1", "9.9.9.9")
+	cases := []struct {
+		name   string
+		in     types.List
+		server []string
+		want   []string
+		null   bool
+	}{
+		{"server canonical form keeps configured spelling", configured, []string{"1.1.1.1:853", "9.9.9.9:853"}, []string{"1.1.1.1", "9.9.9.9"}, false},
+		{"different server value is drift", configured, []string{"8.8.8.8:853", "9.9.9.9:853"}, []string{"8.8.8.8:853", "9.9.9.9:853"}, false},
+		{"different length is drift", configured, []string{"1.1.1.1:853"}, []string{"1.1.1.1:853"}, false},
+		{"unmanaged stays null", types.ListNull(types.StringType), []string{"1.1.1.1:853"}, nil, true},
+	}
+	for _, tc := range cases {
+		got := reconcileForwarders(context.Background(), tc.in, tc.server, "Tls")
+		if tc.null {
+			if !got.IsNull() {
+				t.Errorf("%s: got %v, want null", tc.name, got)
+			}
+			continue
+		}
+		if g := strings.Join(listStrings(t, got), ","); g != strings.Join(tc.want, ",") {
+			t.Errorf("%s: got %s, want %v", tc.name, g, tc.want)
+		}
 	}
 }
 
@@ -172,22 +159,10 @@ func runProtocolModifier(t *testing.T, cfg, plan ServerSettingsResourceModel, st
 	return resp
 }
 
-func TestForwarderProtocolModifier_UnsetFollowsPriorState(t *testing.T) {
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringNull())
-	plan := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	prior := settingsModel(stringList(t, "1.1.1.1"), types.StringValue("Udp"))
-	if resp := runProtocolModifier(t, cfg, plan, &prior); resp.PlanValue.ValueString() != "Udp" {
-		t.Errorf("plan = %v, want prior Udp", resp.PlanValue)
-	}
-	if resp := runProtocolModifier(t, cfg, plan, nil); !resp.PlanValue.IsUnknown() {
-		t.Errorf("create plan = %v, want unknown", resp.PlanValue)
-	}
-}
-
 func TestForwarderProtocolModifier_SetWithoutForwardersWarns(t *testing.T) {
 	cfg := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	prior := settingsModel(stringList(t), types.StringValue("Tls"))
-	for name, st := range map[string]*ServerSettingsResourceModel{"no prior state": nil, "no server forwarders": &prior} {
+	prior := settingsModel(types.ListNull(types.StringType), types.StringValue("Udp"))
+	for name, st := range map[string]*ServerSettingsResourceModel{"no prior state": nil, "prior state": &prior} {
 		resp := runProtocolModifier(t, cfg, cfg, st)
 		if resp.Diagnostics.HasError() || resp.Diagnostics.WarningsCount() != 1 {
 			t.Errorf("%s: diagnostics = %v, want one warning", name, resp.Diagnostics)
@@ -195,14 +170,6 @@ func TestForwarderProtocolModifier_SetWithoutForwardersWarns(t *testing.T) {
 		if resp.PlanValue.ValueString() != "Tls" {
 			t.Errorf("%s: plan = %v", name, resp.PlanValue)
 		}
-	}
-}
-
-func TestForwarderProtocolModifier_SetWithoutForwardersConflictIsError(t *testing.T) {
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	prior := settingsModel(stringList(t, "1.1.1.1"), types.StringValue("Udp"))
-	if resp := runProtocolModifier(t, cfg, cfg, &prior); !resp.Diagnostics.HasError() {
-		t.Error("expected an error when the server's forwarders use a different protocol")
 	}
 }
 
@@ -249,41 +216,42 @@ func settingsServer(t *testing.T, forwarders []string, protocol string) *http.Se
 	return mux
 }
 
-func TestServerSettingsUpdate_StaleForwardersIsClearError(t *testing.T) {
+func TestReadState_ForwardersKeepConfiguredSpelling(t *testing.T) {
 	ctx := context.Background()
-	r := &ServerSettingsResource{client: newTestClient(t, settingsServer(t, []string{"1.1.1.1"}, "Udp"))}
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringNull())
-	plan := settingsModel(stringList(t), types.StringValue("Tls"))
-	plan.ID = types.StringValue("server-settings")
-	prior := plan
-	config, p, st := newForwardersFixture(t, cfg, plan, &prior)
-	resp := &resource.UpdateResponse{State: tfsdk.State{Schema: p.Schema}}
-	r.Update(ctx, resource.UpdateRequest{Config: config, Plan: p, State: st}, resp)
-	if !resp.Diagnostics.HasError() || !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), "forwarder") {
-		t.Fatalf("diagnostics = %v, want a clear forwarder error", resp.Diagnostics)
-	}
-}
-
-func TestServerSettingsCreate_ServerForwardersProtocolMismatchIsClearError(t *testing.T) {
-	ctx := context.Background()
-	r := &ServerSettingsResource{client: newTestClient(t, settingsServer(t, []string{"1.1.1.1"}, "Udp"))}
-	cfg := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
-	config, p, _ := newForwardersFixture(t, cfg, cfg, nil)
-	resp := &resource.CreateResponse{State: tfsdk.State{Schema: p.Schema}}
-	r.Create(ctx, resource.CreateRequest{Config: config, Plan: p}, resp)
-	if !resp.Diagnostics.HasError() || !strings.Contains(resp.Diagnostics.Errors()[0].Summary(), "forwarder") {
-		t.Fatalf("diagnostics = %v, want a clear forwarder error", resp.Diagnostics)
-	}
-}
-
-func TestReadState_ForwardersAlwaysFromServer(t *testing.T) {
-	ctx := context.Background()
-	r := &ServerSettingsResource{client: newTestClient(t, settingsServer(t, nil, "Tls"))}
-	m := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
+	r := &ServerSettingsResource{client: newTestClient(t, settingsServer(t, []string{"1.1.1.1:853"}, "Tls"))}
+	m := settingsModel(stringList(t, "1.1.1.1"), types.StringValue("Tls"))
 	if err := r.readState(ctx, &m); err != nil {
 		t.Fatal(err)
 	}
-	if m.Forwarders.IsNull() || len(m.Forwarders.Elements()) != 0 {
-		t.Errorf("forwarders = %v, want empty list from server", m.Forwarders)
+	if g := strings.Join(listStrings(t, m.Forwarders), ","); g != "1.1.1.1" {
+		t.Errorf("forwarders = %s, want configured spelling", g)
 	}
+}
+
+func TestReadState_ProtocolFollowsServerOnlyWhileForwardersManaged(t *testing.T) {
+	ctx := context.Background()
+	r := &ServerSettingsResource{client: newTestClient(t, settingsServer(t, []string{"1.1.1.1"}, "Udp"))}
+	unmanaged := settingsModel(types.ListNull(types.StringType), types.StringValue("Tls"))
+	if err := r.readState(ctx, &unmanaged); err != nil {
+		t.Fatal(err)
+	}
+	if !unmanaged.Forwarders.IsNull() || unmanaged.ForwarderProtocol.ValueString() != "Tls" {
+		t.Errorf("unmanaged: forwarders=%v protocol=%v, want null and the planned Tls", unmanaged.Forwarders, unmanaged.ForwarderProtocol)
+	}
+	managed := settingsModel(stringList(t, "1.1.1.1"), types.StringValue("Tls"))
+	if err := r.readState(ctx, &managed); err != nil {
+		t.Fatal(err)
+	}
+	if managed.ForwarderProtocol.ValueString() != "Udp" {
+		t.Errorf("managed: protocol = %v, want the server's Udp", managed.ForwarderProtocol)
+	}
+}
+
+func listStrings(t *testing.T, l types.List) []string {
+	t.Helper()
+	var out []string
+	if d := l.ElementsAs(context.Background(), &out, false); d.HasError() {
+		t.Fatal(d)
+	}
+	return out
 }

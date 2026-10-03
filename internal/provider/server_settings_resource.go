@@ -198,12 +198,11 @@ func (r *ServerSettingsResource) Schema(_ context.Context, _ resource.SchemaRequ
 			},
 			"forwarders": schema.ListAttribute{
 				Description: "List of forwarder addresses. STIG BIND-9X-001360 (SC-20). Stored in Technitium's canonical " +
-					"form for forwarder_protocol, and the plan shows that form. When omitted, Terraform does not manage " +
-					"the server's forwarders and state shows the server's list.",
-				Optional:      true,
-				Computed:      true,
-				ElementType:   types.StringType,
-				PlanModifiers: []planmodifier.List{canonicalForwardersModifier{}},
+					"form for forwarder_protocol; state keeps the configured spelling while the server's value is its canonical form. " +
+					"Forwarders the server would store differently, such as port 53 with forwarder_protocol Tls, are rejected.",
+				Optional:    true,
+				ElementType: types.StringType,
+				Validators:  []validator.List{forwardersValidator{}},
 			},
 			"forwarder_protocol": schema.StringAttribute{
 				Description: "Forwarder transport protocol. STIG SC-8. Valid: Udp, Tcp, Tls, Https, Quic. Applies only when " +
@@ -353,7 +352,6 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 	}
 
 	plan.ID = types.StringValue("server-settings")
-	planned := plan
 
 	params := r.buildParams(ctx, &plan)
 	omitUnmanagedForwarders(params, configForwarders)
@@ -367,12 +365,6 @@ func (r *ServerSettingsResource) Create(ctx context.Context, req resource.Create
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
-	}
-	if configForwarders.IsNull() {
-		checkUnmanagedForwarders(&planned, &plan, &resp.Diagnostics)
-		if resp.Diagnostics.HasError() {
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -401,7 +393,6 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	planned := plan
 
 	params := r.buildParams(ctx, &plan)
 	omitUnmanagedForwarders(params, configForwarders)
@@ -416,12 +407,6 @@ func (r *ServerSettingsResource) Update(ctx context.Context, req resource.Update
 	if err := r.readState(ctx, &plan); err != nil {
 		resp.Diagnostics.AddError("Error reading server settings", err.Error())
 		return
-	}
-	if configForwarders.IsNull() {
-		checkUnmanagedForwarders(&planned, &plan, &resp.Diagnostics)
-		if resp.Diagnostics.HasError() {
-			return
-		}
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &plan)...)
@@ -503,7 +488,7 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	model.ServeStale = types.BoolValue(settings.ServeStale)
 	// ForwarderProtocol: the API only persists this when forwarders are configured.
 	// If no forwarders, keep the planned value to avoid drift.
-	if len(settings.Forwarders) > 0 || model.ForwarderProtocol.IsNull() || model.ForwarderProtocol.IsUnknown() {
+	if (len(settings.Forwarders) > 0 && !model.Forwarders.IsNull()) || model.ForwarderProtocol.IsNull() || model.ForwarderProtocol.IsUnknown() {
 		model.ForwarderProtocol = types.StringValue(settings.ForwarderProtocol)
 	}
 	model.EnableDnsOverTls = types.BoolValue(settings.EnableDnsOverTls)
@@ -539,11 +524,7 @@ func (r *ServerSettingsResource) readState(ctx context.Context, model *ServerSet
 	readStringList(ctx, &model.BlockingBypassList, settings.BlockingBypassList)
 	readStringList(ctx, &model.CustomBlockingAddresses, settings.CustomBlockingAddresses)
 	readStringList(ctx, &model.BlockListUrls, settings.BlockListUrls)
-	forwarders := settings.Forwarders
-	if forwarders == nil {
-		forwarders = []string{}
-	}
-	model.Forwarders, _ = types.ListValueFrom(ctx, types.StringType, forwarders)
+	model.Forwarders = reconcileForwarders(ctx, model.Forwarders, settings.Forwarders, settings.ForwarderProtocol)
 	readStringList(ctx, &model.ZoneTransferAllowedNetworks, settings.ZoneTransferAllowedNetworks)
 	readStringList(ctx, &model.NotifyAllowedNetworks, settings.NotifyAllowedNetworks)
 
