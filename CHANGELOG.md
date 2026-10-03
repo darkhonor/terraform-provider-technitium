@@ -7,271 +7,98 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Tested against Technitium DNS Server 15.5.1. The **Breaking** items below can stop an existing
+configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v1.3.md) first.
+
 ### Added
 
-- Contributed by [@Ujstor](https://github.com/Ujstor). New resources: `technitium_cluster` (Primary initialization),
-  `technitium_cluster_secondary` (Secondary join, with `terraform import`
-  support and in-place adoption semantics for `node_url` /
-  `primary_node_url`), `technitium_sso` (OIDC SSO incl. group mapping),
-  `technitium_user`, and `technitium_api_token`.
-- `technitium_zone`: zone access options `query_access` +
-  `query_access_network_acl` (#89) and `dynamic_update` +
-  `dynamic_update_network_acl` (RFC 2136 dynamic updates).
-- `technitium_server_settings`: web service TLS settings.
-- TLS acceptance-test environment (`docker-compose.test.tls.yml`).
-- `legacy_token_auth` provider argument, with a `TECHNITIUM_LEGACY_TOKEN_AUTH` environment
-  variable fallback, to send every request as a `POST` with the API token in a `token` form
-  field for Technitium DNS Server versions before 15.0 that do not support
-  the `Authorization: Bearer` header. Default: `false`. (GHSA-27mx-6hfq-f887)
-- `technitium_zone`: `dnssec.change_acknowledgment` — per-zone, per-transition operator
-  acknowledgment for destructive DNSSEC changes (`"<ALGORITHM>/<CURVE>"` for a re-sign
-  target, `"unsigned"` for unsigning). (#96)
-- `technitium_zone`: `nx_proof` changes on a signed zone now convert in place
-  (NSEC <-> NSEC3) with no key regeneration. (#96)
-- `technitium_zone`: `dnssec.algorithm` and `dnssec.curve` are now validated against their
-  allowed values at plan time, and invalid algorithm/curve combinations (e.g. `EDDSA` with
-  `P256`) are refused before any destructive action. (#96)
-- `technitium_record`: `comments` attribute for the record's free-text comment. When
-  omitted, the provider adopts the server's comment and preserves it across updates; set
-  it to `""` to clear. (#139)
-- DHCP server management: new resources `technitium_dhcp_scope` (address range,
-  lease times, DNS integration, boot/TFTP options, static routes, exclusions, inline
-  reserved leases, with in-place rename and `terraform import`) and
-  `technitium_dhcp_reserved_lease` (a single MAC-to-IP reservation, imported as
-  `<scope>::<mac>`), and new data sources `technitium_dhcp_scope`,
-  `technitium_dhcp_scopes`, and `technitium_dhcp_leases`. Based on the DHCP support
-  written by [@bartei](https://github.com/bartei) in
-  [bartei/terraform-provider-technitium](https://github.com/bartei/terraform-provider-technitium).
+- `technitium_cluster`, `technitium_cluster_secondary`, `technitium_sso`, `technitium_user`, and
+  `technitium_api_token` resources. Contributed by [@Ujstor](https://github.com/Ujstor). ([#94])
+- DHCP management: `technitium_dhcp_scope` and `technitium_dhcp_reserved_lease` resources, and
+  `technitium_dhcp_scope`, `technitium_dhcp_scopes`, and `technitium_dhcp_leases` data sources.
+  Contributed by [@dustins](https://github.com/dustins), based on work by
+  [@bartei](https://github.com/bartei). ([#150])
+- `technitium_zone`: `query_access`, `dynamic_update`, and their network ACLs. ([#89])
+- `technitium_zone`: `dnssec.change_acknowledgment`, in-place NSEC/NSEC3 conversion, and
+  plan-time validation of `algorithm` and `curve`. ([#96])
+- `technitium_record`: `comments` attribute. Contributed by
+  [@pushkar-anand](https://github.com/pushkar-anand). ([#139], [#140])
+- `technitium_server_settings`: web service TLS settings. ([#94])
+- `legacy_token_auth` provider argument (`TECHNITIUM_LEGACY_TOKEN_AUTH`) for servers older than
+  15.0. Contributed by [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
+- `AUTHORS` file and an Attribution section in `CONTRIBUTING.md`. ([#115])
+- TLS acceptance-test environment. ([#94])
 
 ### Changed
 
-- **Behavior change for `FWD` records:** two `technitium_record` resources with the same
-  `value` and `protocol` in one zone are no longer accepted, whatever their
-  `forwarder_priority` or `dnssec_validation`. Create with `overwrite = false` is refused when
-  such a record exists, and destroy or update of either record of an existing pair is refused
-  until the pair is rebuilt with distinct values or protocols. Configurations whose forwarders
-  differ by `value` or `protocol` are unaffected. (#141)
-- **Breaking change for Technitium DNS Server versions before 15.0:** the API token is now sent
-  as an `Authorization: Bearer` header by default, which pre-15.0 servers ignore. Every request
-  then fails as `invalid-token`. Set `legacy_token_auth = true` (or export
-  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field instead; the provider's
-  "Unable to connect" diagnostic now says so when it sees that failure under the default auth
-  mode. Servers on 15.0 or later need no change. (GHSA-27mx-6hfq-f887)
-- **Breaking: redirects.** The provider follows a redirect only when the scheme, host, and port
-  stay the same. A `server_url` that relied on an `http://` to `https://` redirect, including
-  Technitium's own `web_service_http_to_tls_redirect`, now fails at provider configuration with
-  "refusing redirect from ... to ...". The same applies to
-  `technitium_cluster_secondary.node_url`, at apply time. Set `server_url` (or `node_url`) to the
-  final `https://` address; the TLS settings (`tls_min_version`, `ca_cert_file`,
-  `skip_tls_verify`) were never applied on that redirected hop. (#147, #124)
-- **Behavior change for every configuration whose `stig_compliance` block resolves
-  `enforcement = "strict"`** — including blocks that set only `nss`/`categorization` and
-  never `enabled`, since enforcement defaults to `strict` whenever the block exists:
-  unsigning a signed zone (`dnssec.enabled = false`, or removing the block) is now blocked
-  at plan time until the zone declares `change_acknowledgment = "unsigned"`. Previously the
-  unsign was ungated. In all postures, unsigning now draws a plan-time going-insecure
-  warning (RFC 6781 §4.2.1.2), and `silent` enforcement no longer suppresses these
-  action-consequence notices (it still suppresses STIG findings and the stale-acknowledgment
-  removal warning). (#96)
-- In-place `dnssec.algorithm`/`curve` changes on a signed zone are now refused at plan time
-  with a diagnostic naming the acknowledgment and the manual procedure, instead of being
-  silently ignored and failing with "Provider produced inconsistent result after apply". With
-  the matching acknowledgment the provider performs the unsign/re-sign. (#96)
+- **Breaking:** the API token is sent as an `Authorization: Bearer` header. Servers older than
+  15.0 need `legacy_token_auth = true`. Contributed by [@bytestrom](https://github.com/bytestrom).
+  (GHSA-27mx-6hfq-f887, [#121])
+- **Breaking:** two `FWD` records in one zone with the same `value` and `protocol` are refused.
+  ([#141])
+- **Breaking:** redirects are followed only within the same scheme, host, and port; `server_url`
+  and `node_url` must name the final address. Writes are sent as `POST` form bodies, so a proxy
+  must allow `POST` on `/api/*`. See [Reverse Proxies and Load
+  Balancers](docs/guides/reverse-proxy.md). ([#147], [#124])
+- **Breaking:** under `strict` STIG enforcement (the default), unsigning a zone requires
+  `change_acknowledgment = "unsigned"`. Unsigning now warns in every posture. ([#96])
+- In-place DNSSEC `algorithm`/`curve` changes are refused unless acknowledged. ([#96])
+- Forwarder zones, and Primary zones whose server value differs from the configuration, show a
+  one-time `soa_serial_date_scheme` change after upgrading; applying it increments the serial.
+  ([#135])
+- Building from source requires Go 1.27.1. ([#126])
 
 ### Fixed
 
-- `technitium_server_settings`: a forwarder written in a form other than the one Technitium
-  stores (for example `1.1.1.1` with `forwarder_protocol = "Tls"`, stored as `1.1.1.1:853`) no
-  longer fails with "Provider produced inconsistent result after apply"; state keeps the
-  configured spelling while the stored value is its canonical form. A forwarder the server
-  would silently change (an `https://` URL with a protocol other than `Https`, or port 53 or
-  853 with the other protocol family) is now rejected at plan time; these inputs already failed
-  at apply. `forwarder_protocol` set without `forwarders` has no effect, and the plan now warns
-  about it. State recorded with the server's form after a failed apply converges to the
-  configured spelling on the next apply. (#134)
-- `technitium_zone`: `soa_serial_date_scheme` is now read from the zone's SOA record and applied
-  on update, so drift is visible and an existing zone's scheme can be changed. Forwarder zones
-  now get the scheme they were configured with. After upgrading, any Primary or Forwarder zone
-  whose server value differs from the configuration (the default is `true`) shows a one-time
-  change on the next plan; this includes every Forwarder zone created by an earlier version.
-  Applying it updates the SOA record and increments the serial; switching to `true` moves the
-  serial to the date form (it never decreases). See the upgrade guide. (#135)
-- `technitium_zone`: when a step after zone creation fails (zone options, the SOA serial scheme,
-  DNSSEC signing, or reading the zone back), the zone is now saved to state as tainted and replaced on the next apply,
-  instead of being left on the server outside state, where the next apply failed because the
-  zone already existed. (#135)
-- `technitium_record`: refresh no longer aborts when the record's parent
-  zone is gone ("No such zone was found"); the record is removed from state
-  and planned for recreation (#88).
-- `technitium_zone`: changing `dnssec` `algorithm`/`curve`/`nx_proof` on an already-signed
-  ECDSA/EDDSA zone was silently ignored by Update, producing "Provider produced inconsistent
-  result after apply" on every attempt. (RSA-signed zones have a separate, pre-existing state
-  round-trip defect — the read model cannot represent "no curve" — tracked as #101.) (#96)
-- `technitium_zone`: a `dnssec` block on a non-Primary zone is now refused at plan time.
-  Technitium signs Primary zones only (`/api/zones/dnssec/sign` answers "No such primary zone
-  was found" for every other type), so the block declared an intent the provider could never
-  fulfil: `enabled` defaulted to `true`, Create and Update skipped signing because the type was
-  not Primary, and refresh read the zone back unsigned, failing the apply with "Provider
-  produced inconsistent result after apply". A Secondary serves the signed data it receives
-  from its primary, so sign the zone on the primary instead. (#100)
-- `technitium_sso`: removing `authority`, `client_id`, `metadata_address`, `scopes`, or
-  `group_map` from configuration now sends an explicit clear. The set API retains every
-  omitted parameter, so the removal previously either failed the apply with "Provider
-  produced inconsistent result after apply" or — for `group_map` — was skipped silently
-  while the server kept granting the removed group mappings. Server-side `group_map`
-  entries now also surface as drift during refresh when the attribute is unset. Removing
-  `scopes` resets the server to its default scope list (openid, profile, email), which is
-  what unset already meant for that attribute. (#94)
-- `technitium_user`: removing `display_name` from configuration now resets it on the
-  server instead of retaining the old value and failing the apply with "Provider produced
-  inconsistent result after apply". The server substitutes the username as its
-  display-name default, so the attribute is read back only while it is configured. (#94)
-- `technitium_record`: an in-place update (a `ttl` or `value` change, for example) no longer
-  erases the record's comment. Technitium's update API assigns the `comments` parameter
-  unconditionally and the provider never sent it, so every update cleared any comment set in
-  the web console — most visibly on records adopted with `terraform import`. (#139)
-
-### Added
-
-- `AUTHORS` file crediting contributors whose merged work was never named anywhere in the
-  repository, and an Attribution section in
-  `CONTRIBUTING.md` stating that contributors retain copyright in the work they author
-  and should put their own notice on new source files. (#115)
+- `technitium_server_settings`: `forwarders` no longer fail with "inconsistent result after
+  apply"; forms the server would rewrite are rejected at plan time. ([#134])
+- `technitium_zone`: `soa_serial_date_scheme` is read from the SOA record and applied on update.
+  ([#135])
+- `technitium_zone`: a failure after zone creation leaves the zone tainted in state instead of
+  orphaned. ([#135])
+- `technitium_zone`: DNSSEC parameter changes on a signed ECDSA/EdDSA zone are no longer
+  silently ignored (RSA: [#101]). ([#96])
+- `technitium_zone`: a `dnssec` block on a non-Primary zone is refused at plan time. ([#100])
+- `technitium_record`: refresh no longer fails when the parent zone is gone. ([#88])
+- `technitium_record`: updates no longer erase the record's comment. Contributed by
+  [@pushkar-anand](https://github.com/pushkar-anand). ([#139], [#140])
+- `technitium_sso` and `technitium_user`: removing an attribute now clears it on the server, and
+  server-side SSO `group_map` entries show as drift. ([#94])
+- `technitium_blocked_zones` / `technitium_allowed_zones` data sources: error responses are no
+  longer returned as domain lists. ([#123])
+- The `technitium_catalog_membership` example no longer declares `dnssec` on a Catalog zone.
+  ([#116])
+- An uppercase `HTTPS://` `server_url` now gets the configured TLS settings. ([#147])
+- `make docs` and `make generate` work from any directory, including worktrees. ([#114])
 
 ### Security
 
-- Client: every API call that writes to the server (records, zones, DNSSEC, blocked/allowed zones,
-  users, API tokens, sessions, cluster, logout) now sends its parameters as a form-encoded POST
-  body instead of a GET query string. Record values, record `comments`, and the `Sensitive` FWD
-  `proxy_password` no longer appear in request URLs, where reverse proxies and access logs record
-  them; large blocked/allowed imports no longer risk the server's request-line limit. A reverse
-  proxy or WAF must allow `POST` on `/api/*`, and `server_url` must name the final scheme, host,
-  and port: a 301/302/303 re-sends a `POST` as a bodyless `GET`, which fails for any write that
-  takes parameters, and a redirect to another scheme, host, or port is refused (see below). With
-  `legacy_token_auth`, reads and the blocked/allowed export are also sent as `POST` with the token
-  in the form body, so the token never appears in a URL. See the Upgrading to v1.3 guide. Verified
-  against Technitium 15.4 and 15.5.1, and with `legacy_token_auth` (reads and writes) against
-  14.3, 15.4 and 15.5.1. (#147)
-- Client: redirects to another scheme, host, or port are refused, so a redirect can no longer
-  carry the API token, login password, or legacy form-body token to an address `server_url` did
-  not name. URLs in errors and provider diagnostics no longer include userinfo (`user:password@`),
-  and an uppercase `HTTPS://` `server_url` now gets the configured TLS settings. (#147, #124)
-- Client: error text no longer echoes secrets sent in the failed request (user passwords,
-  FWD `proxy_password`, cluster join credentials, SSO client secret, TLS certificate password,
-  TSIG shared secrets) when a proxy page or error envelope repeats them, and an unparseable
-  redirect `Location` header is no longer quoted. (#147)
-- Client: an API error message that echoes the API token or login password is now redacted
-  before it reaches a Terraform diagnostic, as non-200 response bodies already were. (#147)
-- `technitium_record`: the documentation recommended telling two `FWD` records to the same
-  forwarder and protocol apart by `forwarder_priority`. That was wrong. Technitium identifies a
-  forwarder record by address and protocol only; measured against 15.4 and 15.5.1, destroying
-  one record of such a pair deleted whichever was created first, and an in-place update merged
-  the two, both reported as success. In the recommended validating/non-validating pair the
-  record silently lost was the DNSSEC-validating one, and on Technitium 15.5+ a Conditional
-  Forwarder zone left with only non-validating forwarders becomes a Negative Trust Anchor. The
-  provider now refuses to create such a pair and refuses to destroy or update either record of
-  an existing one; refresh warns about existing pairs, and the documentation describes how to
-  rebuild them. Not externally exploitable: only an operator applying configuration can
-  trigger it. (#141)
-- The API token is now sent via an `Authorization: Bearer` header by default instead of the
-  `token` URL query parameter/form field, at all three call sites (`doGet`, `doPost`, and the
-  blocked/allowed zone export helper). The token previously appeared in the request URL on
-  every API call, so any HTTP intermediary that logs request URLs — a reverse proxy's access
-  logs, in particular — recorded the live admin API token in cleartext. Technitium DNS Server
-  15.0+ accepts the `Authorization: Bearer` header; set `legacy_token_auth = true` (or export
-  `TECHNITIUM_LEGACY_TOKEN_AUTH=true`) to send the token as a form field against an older
-  server. (GHSA-27mx-6hfq-f887)
-- Transport-layer errors (DNS failure, connection refused, timeout, TLS failure) from those
-  same three call sites are rebuilt from a query-stripped URL before being returned.
-  `http.Client.Do` wraps such failures in a `*url.Error` whose `Error()` method embeds the
-  full request URL, including the query string, which surfaced verbatim in Terraform
-  diagnostics (e.g. "Unable to connect to Technitium server"), CI logs, and any pasted
-  support ticket; before this release that query string carried the token in
-  `legacy_token_auth` mode. (GHSA-27mx-6hfq-f887)
-- Request-construction failures (an unparseable `server_url`, for example) are redacted the
-  same way. `http.NewRequestWithContext` returns the same `*url.Error` shape as a transport
-  failure, embedding the raw URL, and four call sites (`doGet`, `doPost`, the blocked/allowed
-  zone export helper, and session login) had wrapped it verbatim. (GHSA-27mx-6hfq-f887)
-- A non-200 HTTP response body is no longer quoted verbatim into errors. Reverse-proxy and WAF
-  error pages routinely echo the request URI or form body, which in `legacy_token_auth` mode
-  carries the API token and on session login carries the password. The body is now scrubbed of
-  every credential the client holds, raw and URL-encoded, and truncated to 512 bytes.
-  (GHSA-27mx-6hfq-f887)
-- The acceptance-test suite no longer carries a hardcoded API token literal. The helper that
-  resolves the test credential had a baked-in 64-character fallback used whenever
-  `TECHNITIUM_API_TOKEN` was unset. The value authenticated only to a disposable test
-  container and does not survive a container restart, so nothing needs rotating, but a
-  committed credential-shaped literal is flagged by secret scanners and reads badly in a
-  provider whose purpose is compliance tooling. An unset token now surfaces the provider's own
-  `Missing api_token` diagnostic naming the environment variable, instead of a confusing
-  invalid-token failure against whatever server is listening. A regression test scans the
-  package for credential-shaped literals so one cannot be reintroduced. No production code
-  changes. (#108)
-- fix(ci): Go 1.26.6 toolchain — clear the govulncheck blocker red on main ([#103])
+- The API token is no longer sent in request URLs. Reported and fixed by
+  [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
+- Writes are sent as `POST` form bodies, keeping record values, comments, and `proxy_password` out
+  of URLs and access logs. ([#147])
+- Redirects to another scheme, host, or port are refused, so credentials cannot follow them.
+  ([#147], [#124])
+- Credentials are redacted from errors and diagnostics. (GHSA-27mx-6hfq-f887, [#147])
+- `FWD` record pairs that Technitium cannot tell apart are refused, preventing silent loss of
+  the DNSSEC-validating forwarder. ([#141])
+- Every Go source file carries copyright and SPDX headers. ([#115])
+- The hardcoded fallback API token is removed from the acceptance suite. ([#108])
+- Go 1.26.6 toolchain to clear a govulncheck finding. ([#103])
 
 ### Documentation
 
-- New **Upgrading to v1.3** guide (`docs/guides/upgrading-to-v1.3.md`), linked from the README
-  and the provider index: supported server versions, the Bearer-auth and forwarder-identity
-  changes and what to do about each, the two Technitium 15.5 server changes that affect managed
-  forwarders (duplicate forwarder records refused; non-validating forwarder zones become
-  Negative Trust Anchors that return the record comment to clients), and a recommended upgrade
-  order. The README's server requirement moves from `>= 13.x` to `>= 15.0`, the oldest version
-  the default Bearer authentication supports, with 15.5.1 recommended.
-- Resource and data-source `page_title` values now use the tfplugindocs default,
-  `"<name> <Type> - terraform-provider-technitium"`, replacing `"... - Technitium DNS Server"`.
-  The product name in that slot implies an official relationship with Technitium that does not
-  exist; this is a third-party provider. The templates now use the generator's own expression
-  rather than restating the literal, so the value cannot drift from the build configuration.
-  (#116)
-- Five new worked DNSSEC examples on `technitium_zone`, covering the configurations that
-  previously existed only as prose: EdDSA (Ed448), RSA for legacy-validator interoperability,
-  the non-destructive NSEC/NSEC3 conversion, algorithm/curve rotation with
-  `change_acknowledgment` and the DS re-publication that must follow, and taking a zone
-  insecure with the parent-DS removal ordering. The destructive paths from #96 had thorough
-  documentation but nothing an operator could copy. (#116)
-- `technitium_catalog_membership` gains a documentation template. It was the only resource
-  without one, so its page carried the schema-derived argument list and none of the worked
-  examples, catalog-inheritance warning, destroy semantics, or import instructions its siblings
-  provide. (#116)
-
-### Fixed
-
-- The `technitium_catalog_membership` example declared a `dnssec` block on a `Catalog` zone,
-  which is refused at plan time since #100. The block is removed; the `Primary` member zone in
-  the same example keeps its own. (#116)
-- `technitium_blocked_zones` / `technitium_allowed_zones` data sources: the plain-text
-  export they read now fails on a non-200 status, a Technitium JSON error envelope (for
-  example `invalid-token`) or any other JSON body, or an HTML page, instead of returning the
-  response body as a list of domains. (#123)
-
-### Security
-
-- Three Go source files carried neither a copyright notice nor an SPDX license identifier:
-  `internal/client/tls_errors.go`, `internal/client/tls_errors_test.go`, and
-  `internal/provider/record_resource_import_test.go`. All 95 files now carry both. MPL-2.0
-  section 3.4 requires those notices to survive redistribution, and this provider is published
-  for environments where license and provenance metadata is inspected rather than assumed. A
-  regression test walks the repository so a file cannot be added without them. (#115)
+- New guides: Upgrading to v1.3 and Reverse Proxies and Load Balancers. ([#149], [#153])
+- README: Technitium requirement raised to 15.0 (15.5.1 recommended). ([#149])
+- DNSSEC examples on `technitium_zone`, a `technitium_catalog_membership` template, and default
+  page titles. ([#116])
+- Vendored Technitium API docs removed in favor of upstream links. ([#152])
 
 ### Test infrastructure
 
-- Acceptance-test configurations no longer hand-roll a `provider "technitium"` block pinned to
-  `http://127.0.0.1:5380`. Thirty-seven blocks across ten files now use the environment-aware
-  `testAccProviderHCL()` helper, so they follow `TECHNITIUM_SERVER_URL` and `TECHNITIUM_CACERT`
-  during the TLS acceptance run instead of talking plaintext on 5380 while the rest of the
-  suite used HTTPS on 5443. Completes the transport fix begun in #110, which corrected only the
-  Go direct client. A regression test scans the package so a hardcoded endpoint cannot be
-  reintroduced. (#115)
-
-- `make docs` and `make generate` no longer delete `docs/` and fail when run from a directory
-  whose name is not `terraform-provider-technitium`, which includes every git worktree.
-  `tfplugindocs` infers the provider name from the working directory and clears the output
-  directory before validating it, so a failed run left the generated docs deleted. Both targets
-  now pass `--provider-name` explicitly. Output is byte-identical to before. (#114)
-
-- test: gate live-server setup behind TF_ACC so `go test ./...` passes on a clean clone ([#109])
-- test: direct client follows the suite's transport instead of hardcoding HTTP ([#111])
+- Acceptance configurations follow `TECHNITIUM_SERVER_URL` and `TECHNITIUM_CACERT`. ([#115])
+- Live-server setup is gated behind `TF_ACC`. ([#109])
+- The direct test client follows the suite's transport. ([#111])
 
 ### Dependencies
 
@@ -281,6 +108,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - chore(deps): update github/codeql-action action to v4.37.6 ([#92])
 - chore(deps): update actions/attest-build-provenance action to v4.2.2 ([#93])
 - chore(deps): update github/codeql-action action to v4.37.7 ([#95])
+- chore(deps): upgrade Go toolchain and CI to 1.27.1 ([#126])
+- chore(deps): update github/codeql-action action to v4.37.9 ([#127])
+- chore(deps): Bump google.golang.org/grpc from 1.82.1 to 1.83.2 in the go_modules group across 1 directory ([#128])
+- chore(deps): update github/codeql-action action to v4.38.0 ([#131])
+- fix(ci): update govulncheck for Go 1.27 compatibility ([#132])
+- chore(deps): update technitium/dns-server:latest docker digest to b8efe03 ([#133])
+- chore(deps): update github/codeql-action action to v4.38.2 ([#137])
+- fix(deps): update module github.com/hashicorp/go-uuid to v1.0.4 ([#138])
 
 ## [1.2.1] - 2026-07-26
 
@@ -526,6 +361,37 @@ the new findings from blocking errors to plan-time warnings while you
 work through your zones. `"silent"` suppresses them entirely. Both
 settings preserve the validator coverage for future runs.
 
+[#140]: https://github.com/darkhonor/terraform-provider-technitium/issues/140
+[#121]: https://github.com/darkhonor/terraform-provider-technitium/issues/121
+[#88]: https://github.com/darkhonor/terraform-provider-technitium/issues/88
+[#89]: https://github.com/darkhonor/terraform-provider-technitium/issues/89
+[#94]: https://github.com/darkhonor/terraform-provider-technitium/issues/94
+[#96]: https://github.com/darkhonor/terraform-provider-technitium/issues/96
+[#100]: https://github.com/darkhonor/terraform-provider-technitium/issues/100
+[#101]: https://github.com/darkhonor/terraform-provider-technitium/issues/101
+[#108]: https://github.com/darkhonor/terraform-provider-technitium/issues/108
+[#114]: https://github.com/darkhonor/terraform-provider-technitium/issues/114
+[#115]: https://github.com/darkhonor/terraform-provider-technitium/issues/115
+[#116]: https://github.com/darkhonor/terraform-provider-technitium/issues/116
+[#123]: https://github.com/darkhonor/terraform-provider-technitium/issues/123
+[#124]: https://github.com/darkhonor/terraform-provider-technitium/issues/124
+[#126]: https://github.com/darkhonor/terraform-provider-technitium/issues/126
+[#127]: https://github.com/darkhonor/terraform-provider-technitium/issues/127
+[#128]: https://github.com/darkhonor/terraform-provider-technitium/issues/128
+[#131]: https://github.com/darkhonor/terraform-provider-technitium/issues/131
+[#132]: https://github.com/darkhonor/terraform-provider-technitium/issues/132
+[#133]: https://github.com/darkhonor/terraform-provider-technitium/issues/133
+[#134]: https://github.com/darkhonor/terraform-provider-technitium/issues/134
+[#135]: https://github.com/darkhonor/terraform-provider-technitium/issues/135
+[#137]: https://github.com/darkhonor/terraform-provider-technitium/issues/137
+[#138]: https://github.com/darkhonor/terraform-provider-technitium/issues/138
+[#139]: https://github.com/darkhonor/terraform-provider-technitium/issues/139
+[#141]: https://github.com/darkhonor/terraform-provider-technitium/issues/141
+[#147]: https://github.com/darkhonor/terraform-provider-technitium/issues/147
+[#149]: https://github.com/darkhonor/terraform-provider-technitium/issues/149
+[#150]: https://github.com/darkhonor/terraform-provider-technitium/issues/150
+[#152]: https://github.com/darkhonor/terraform-provider-technitium/issues/152
+[#153]: https://github.com/darkhonor/terraform-provider-technitium/issues/153
 [#23]: https://github.com/darkhonor/terraform-provider-technitium/issues/23
 [#29]: https://github.com/darkhonor/terraform-provider-technitium/issues/29
 [#30]: https://github.com/darkhonor/terraform-provider-technitium/issues/30
