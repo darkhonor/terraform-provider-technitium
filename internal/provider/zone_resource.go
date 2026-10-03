@@ -762,8 +762,20 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.SOASerial = types.Int64Value(0)
 	}
 
-	// Set SOASerialDateScheme to match provider default (true)
-	model.SOASerialDateScheme = types.BoolValue(true)
+	schemeRead := false
+	if zoneType == "Primary" || zoneType == "Forwarder" {
+		soa, err := r.client.ZoneSOAGet(ctx, zoneName)
+		if err != nil {
+			return fmt.Errorf("reading SOA record: %w", err)
+		}
+		if soa.RData.UseSerialDateScheme != nil {
+			model.SOASerialDateScheme = types.BoolValue(*soa.RData.UseSerialDateScheme)
+			schemeRead = true
+		}
+	}
+	if !schemeRead && (model.SOASerialDateScheme.IsNull() || model.SOASerialDateScheme.IsUnknown()) {
+		model.SOASerialDateScheme = types.BoolValue(true)
+	}
 
 	// Read DNSSEC state
 	if zone.DNSSECStatus != "Unsigned" && zone.DNSSECStatus != "" {
