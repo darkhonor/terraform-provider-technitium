@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-10-04
+
 Tested against Technitium DNS Server 15.5.1. The **Breaking** items below can stop an existing
 configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v1.3.md) first.
 
@@ -25,7 +27,7 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
   [@pushkar-anand](https://github.com/pushkar-anand). ([#139], [#140])
 - `technitium_server_settings`: web service TLS settings. ([#94])
 - `legacy_token_auth` provider argument (`TECHNITIUM_LEGACY_TOKEN_AUTH`) for servers older than
-  15.0. Contributed by [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
+  15.0. Contributed by [@bytestrom](https://github.com/bytestrom). ([GHSA-27mx-6hfq-f887], [#121])
 - `AUTHORS` file and an Attribution section in `CONTRIBUTING.md`. ([#115])
 - TLS acceptance-test environment. ([#94])
 
@@ -33,7 +35,7 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
 
 - **Breaking:** the API token is sent as an `Authorization: Bearer` header. Servers older than
   15.0 need `legacy_token_auth = true`. Contributed by [@bytestrom](https://github.com/bytestrom).
-  (GHSA-27mx-6hfq-f887, [#121])
+  ([GHSA-27mx-6hfq-f887], [#121])
 - **Breaking:** two `FWD` records in one zone with the same `value` and `protocol` are refused.
   ([#141])
 - **Breaking:** redirects are followed only within the same scheme, host, and port; `server_url`
@@ -74,12 +76,12 @@ configuration from applying; read [Upgrading to v1.3](docs/guides/upgrading-to-v
 ### Security
 
 - The API token is no longer sent in request URLs. Reported and fixed by
-  [@bytestrom](https://github.com/bytestrom). (GHSA-27mx-6hfq-f887, [#121])
+  [@bytestrom](https://github.com/bytestrom). ([GHSA-27mx-6hfq-f887], [#121])
 - Writes are sent as `POST` form bodies, keeping record values, comments, and `proxy_password` out
   of URLs and access logs. ([#147])
 - Redirects to another scheme, host, or port are refused, so credentials cannot follow them.
   ([#147], [#124])
-- Credentials are redacted from errors and diagnostics. (GHSA-27mx-6hfq-f887, [#147])
+- Credentials are redacted from errors and diagnostics. ([GHSA-27mx-6hfq-f887], [#147])
 - `FWD` record pairs that Technitium cannot tell apart are refused, preventing silent loss of
   the DNSSEC-validating forwarder. ([#141])
 - Every Go source file carries copyright and SPDX headers. ([#115])
@@ -485,6 +487,8 @@ settings preserve the validator coverage for future runs.
 - FIPS 140-2 build support via BoringCrypto.
 - OSSF Scorecard, CodeQL, and Dependabot integration.
 
+[GHSA-27mx-6hfq-f887]: https://github.com/darkhonor/terraform-provider-technitium/security/advisories/GHSA-27mx-6hfq-f887
+[1.3.0]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.2.1...v1.3.0
 [1.2.1]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.2.0...v1.2.1
 [1.2.0]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/darkhonor/terraform-provider-technitium/compare/v1.0.1...v1.1.0
