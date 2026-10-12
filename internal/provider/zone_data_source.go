@@ -37,6 +37,9 @@ type ZoneDataSourceModel struct {
 	ZoneTransferACL   types.List   `tfsdk:"zone_transfer_acl"`
 	Notify            types.String `tfsdk:"notify"`
 	NotifyNameServers types.List   `tfsdk:"notify_name_servers"`
+
+	PrimaryNameServerAddresses types.List   `tfsdk:"primary_name_server_addresses"`
+	ZoneTransferProtocol       types.String `tfsdk:"zone_transfer_protocol"`
 }
 
 func (d *ZoneDataSource) Metadata(_ context.Context, req datasource.MetadataRequest, resp *datasource.MetadataResponse) {
@@ -88,6 +91,18 @@ func (d *ZoneDataSource) Schema(_ context.Context, _ datasource.SchemaRequest, r
 				Description: "Notify name server IP addresses.",
 				Computed:    true,
 				ElementType: types.StringType,
+			},
+			"primary_name_server_addresses": schema.ListAttribute{
+				Description: "Primary name server addresses of a Secondary, SecondaryForwarder, " +
+					"SecondaryCatalog or Stub zone, as normalised by the server (for example \"10.0.0.1:853\" " +
+					"under Tls). Null for other zone types.",
+				Computed:    true,
+				ElementType: types.StringType,
+			},
+			"zone_transfer_protocol": schema.StringAttribute{
+				Description: "Protocol used to transfer the zone from its primary (Tcp, Tls, Quic). " +
+					"Null for zone types that do not transfer.",
+				Computed: true,
 			},
 		},
 	}
@@ -142,6 +157,18 @@ func (d *ZoneDataSource) Read(ctx context.Context, req datasource.ReadRequest, r
 	notifyNS, diags := types.ListValueFrom(ctx, types.StringType, zone.NotifyNameServers)
 	resp.Diagnostics.Append(diags...)
 	config.NotifyNameServers = notifyNS
+
+	// Primary name servers / transfer protocol (null when the type has none)
+	config.PrimaryNameServerAddresses = types.ListNull(types.StringType)
+	if takesPrimaryNameServers(zone.Type) && len(zone.PrimaryNameServerAddresses) > 0 {
+		primaries, diags := types.ListValueFrom(ctx, types.StringType, zone.PrimaryNameServerAddresses)
+		resp.Diagnostics.Append(diags...)
+		config.PrimaryNameServerAddresses = primaries
+	}
+	config.ZoneTransferProtocol = types.StringNull()
+	if isSecondaryFamilyZoneType(zone.Type) && zone.PrimaryZoneTransferProtocol != "" {
+		config.ZoneTransferProtocol = types.StringValue(zone.PrimaryZoneTransferProtocol)
+	}
 
 	// Get SOA serial from zone list
 	zones, err := d.client.ZoneList(ctx)

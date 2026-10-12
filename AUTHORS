@@ -58,3 +58,8 @@ Listed in order of first contribution.
   `reservedLeases` parameter is now omitted when the attribute is unset), and
   every plan of a `for_each`/`count` scope failing on unknown values in
   ValidateConfig; regression tests for both.
+
+* Tristan Milnthorp (@tmilnthorp) - `primary_name_server_addresses` and
+  `zone_transfer_protocol` on `technitium_zone`, so Secondary and Stub zones can
+  name the primary they transfer from, with an acceptance test that proves the
+  AXFR between two Technitium containers. (#168)

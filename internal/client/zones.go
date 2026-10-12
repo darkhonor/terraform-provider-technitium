@@ -32,6 +32,14 @@ type Zone struct {
 	NotifyNameServers              []string `json:"notifyNameServers"`
 	Update                         string   `json:"update"`
 	UpdateNetworkACL               []string `json:"updateNetworkACL"`
+
+	// PrimaryNameServerAddresses and PrimaryZoneTransferProtocol are reported
+	// by zones/options/get for Secondary, SecondaryForwarder, SecondaryCatalog
+	// and (addresses only) Stub zones. The server normalises the addresses it
+	// echoes back: it appends the protocol's default port for Tls/Quic (for
+	// example "10.0.0.1:853") and brackets bare IPv6 literals.
+	PrimaryNameServerAddresses  []string `json:"primaryNameServerAddresses"`
+	PrimaryZoneTransferProtocol string   `json:"primaryZoneTransferProtocol"`
 }
 
 // ZoneListItem is a zone entry from /api/zones/list.
@@ -86,14 +94,46 @@ type DSInfo struct {
 	DSRecords    []DSRecord `json:"dsRecords"`
 }
 
+// ZoneCreateOptions carries the create-time parameters that only apply to
+// Secondary-family and Stub zones. The zero value adds nothing to the request.
+type ZoneCreateOptions struct {
+	// PrimaryNameServerAddresses is sent as the comma-separated
+	// primaryNameServerAddresses parameter.
+	PrimaryNameServerAddresses []string
+	// ZoneTransferProtocol is sent as zoneTransferProtocol (Tcp, Tls or Quic).
+	// Note the parameter is named primaryZoneTransferProtocol on
+	// zones/options/set and in the zones/options/get response.
+	ZoneTransferProtocol string
+	// TsigKeyName is sent as tsigKeyName so the initial zone transfer, which
+	// the server performs during zones/create, can authenticate.
+	TsigKeyName string
+}
+
 // ZoneCreate creates a new authoritative zone.
 func (c *Client) ZoneCreate(ctx context.Context, name, zoneType string, useSoaSerialDateScheme bool) (string, error) {
+	return c.ZoneCreateWithOptions(ctx, name, zoneType, useSoaSerialDateScheme, ZoneCreateOptions{})
+}
+
+// ZoneCreateWithOptions creates a new authoritative zone, passing the primary
+// name servers, transfer protocol and TSIG key needed to create Secondary-family
+// and Stub zones. Secondary zones perform their first transfer inside this
+// call, so the primaries must be reachable (and the TSIG key valid) here.
+func (c *Client) ZoneCreateWithOptions(ctx context.Context, name, zoneType string, useSoaSerialDateScheme bool, opts ZoneCreateOptions) (string, error) {
 	params := url.Values{
 		"zone": {name},
 		"type": {zoneType},
 	}
 	if useSoaSerialDateScheme {
 		params.Set("useSoaSerialDateScheme", "true")
+	}
+	if len(opts.PrimaryNameServerAddresses) > 0 {
+		params.Set("primaryNameServerAddresses", strings.Join(opts.PrimaryNameServerAddresses, ","))
+	}
+	if opts.ZoneTransferProtocol != "" {
+		params.Set("zoneTransferProtocol", opts.ZoneTransferProtocol)
+	}
+	if opts.TsigKeyName != "" {
+		params.Set("tsigKeyName", opts.TsigKeyName)
 	}
 	if zoneType == "Forwarder" {
 		// Technitium initializes Forwarder zones with a required FWD record by

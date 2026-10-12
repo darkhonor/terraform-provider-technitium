@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/listplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -55,6 +57,8 @@ type ZoneResourceModel struct {
 	DNSSEC                         *DNSSECModel `tfsdk:"dnssec"`
 	ZoneTransferTsigKeyNames       types.List   `tfsdk:"zone_transfer_tsig_key_names"`
 	PrimaryZoneTransferTsigKeyName types.String `tfsdk:"primary_zone_transfer_tsig_key_name"`
+	PrimaryNameServerAddresses     types.List   `tfsdk:"primary_name_server_addresses"`
+	ZoneTransferProtocol           types.String `tfsdk:"zone_transfer_protocol"`
 	QueryAccess                    types.String `tfsdk:"query_access"`
 	QueryAccessNetworkACL          types.List   `tfsdk:"query_access_network_acl"`
 	DynamicUpdate                  types.String `tfsdk:"dynamic_update"`
@@ -136,6 +140,38 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 					"Valid only for Secondary, SecondaryForwarder, and SecondaryCatalog zones. " +
 					"Maps to STIG BIND-9X-001010 (AC-10).",
 				Optional: true,
+			},
+			"primary_name_server_addresses": schema.ListAttribute{
+				Description: "Addresses of the primary name servers a Secondary, SecondaryForwarder, " +
+					"SecondaryCatalog or Stub zone transfers from, in order of preference. Each entry is an IP " +
+					"address or domain name, optionally with a port (\"10.0.0.1\", \"10.0.0.1:5353\", " +
+					"\"[2001:db8::1]:853\"). Valid only for those zone types; for a Stub zone it is the server " +
+					"queried for the zone's NS records. Technitium performs the first transfer while creating the " +
+					"zone, so the primaries must be reachable (and must allow the transfer) at apply time. " +
+					"Once set it cannot be cleared in place; a Secondary zone needs at least one primary.",
+				Optional:    true,
+				Computed:    true,
+				ElementType: types.StringType,
+				Validators: []validator.List{
+					listvalidator.SizeAtLeast(1),
+					listvalidator.ValueStringsAre(stringvalidator.LengthAtLeast(1)),
+				},
+				PlanModifiers: []planmodifier.List{
+					listplanmodifier.UseStateForUnknown(),
+				},
+			},
+			"zone_transfer_protocol": schema.StringAttribute{
+				Description: "Protocol used to transfer the zone from its primary. Valid values: Tcp, Tls, Quic. " +
+					"Valid only for Secondary, SecondaryForwarder, and SecondaryCatalog zones. When unset, the " +
+					"server default (Tcp) applies and is read back.",
+				Optional: true,
+				Computed: true,
+				Validators: []validator.String{
+					stringvalidator.OneOf("Tcp", "Tls", "Quic"),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"query_access": schema.StringAttribute{
 				Description: "Query access policy for the zone. Valid values: Allow, Deny, " +
@@ -358,6 +394,8 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 		}
 	}
 
+	r.planPrimaryNameServers(ctx, req, resp, &plan)
+
 	// STIG compliance validation
 	if r.providerData != nil && r.providerData.STIGEngine != nil {
 		r.providerData.STIGEngine.ValidatePlan(
@@ -405,10 +443,11 @@ func (r *ZoneResource) Create(ctx context.Context, req resource.CreateRequest, r
 	}
 
 	// Create zone
-	domain, err := r.client.ZoneCreate(ctx,
+	domain, err := r.client.ZoneCreateWithOptions(ctx,
 		plan.Name.ValueString(),
 		plan.Type.ValueString(),
 		plan.SOASerialDateScheme.ValueBool(),
+		r.zoneCreateOptions(ctx, &plan),
 	)
 	if err != nil {
 		resp.Diagnostics.AddError("Error creating zone", err.Error())
@@ -684,6 +723,22 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 		}
 	}
 
+	// Handle primary_name_server_addresses / zone_transfer_protocol. The
+	// options/set parameter is primaryZoneTransferProtocol (zones/create calls
+	// it zoneTransferProtocol). An empty list is never sent: the server stores
+	// the literal string "false" rather than clearing the primaries.
+	if !plan.PrimaryNameServerAddresses.IsNull() && !plan.PrimaryNameServerAddresses.IsUnknown() {
+		var addrs []string
+		plan.PrimaryNameServerAddresses.ElementsAs(ctx, &addrs, false)
+		if len(addrs) > 0 {
+			opts["primaryNameServerAddresses"] = strings.Join(addrs, ",")
+		}
+	}
+	if !plan.ZoneTransferProtocol.IsNull() && !plan.ZoneTransferProtocol.IsUnknown() &&
+		plan.ZoneTransferProtocol.ValueString() != "" {
+		opts["primaryZoneTransferProtocol"] = plan.ZoneTransferProtocol.ValueString()
+	}
+
 	// Handle query access policy
 	if !plan.QueryAccess.IsNull() && !plan.QueryAccess.IsUnknown() {
 		opts["queryAccess"] = plan.QueryAccess.ValueString()
@@ -797,6 +852,20 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.PrimaryZoneTransferTsigKeyName = types.StringValue(zone.PrimaryZoneTransferTsigKeyName)
 	} else {
 		model.PrimaryZoneTransferTsigKeyName = types.StringNull()
+	}
+
+	// Read primary_name_server_addresses / zone_transfer_protocol. Types that
+	// do not take them read back null so Primary zones never show a diff.
+	if isSecondaryFamilyZoneType(zone.Type) && zone.PrimaryZoneTransferProtocol != "" {
+		model.ZoneTransferProtocol = types.StringValue(zone.PrimaryZoneTransferProtocol)
+	} else {
+		model.ZoneTransferProtocol = types.StringNull()
+	}
+	if takesPrimaryNameServers(zone.Type) {
+		model.PrimaryNameServerAddresses = resolvePrimaryAddresses(ctx,
+			model.PrimaryNameServerAddresses, zone.PrimaryNameServerAddresses, zone.PrimaryZoneTransferProtocol)
+	} else {
+		model.PrimaryNameServerAddresses = types.ListNull(types.StringType)
 	}
 
 	// Read SOA serial from zone list
@@ -927,5 +996,91 @@ func mapIANAAlgorithmToAPI(iana string) (algorithm, curve string) {
 			return "RSA", ""
 		}
 		return iana, ""
+	}
+}
+
+// zoneCreateOptions builds the create-time parameters for Secondary-family and
+// Stub zones. The server performs the first transfer inside zones/create, so
+// the primaries, protocol and TSIG key must accompany the create call rather
+// than follow it in zones/options/set.
+func (r *ZoneResource) zoneCreateOptions(ctx context.Context, plan *ZoneResourceModel) client.ZoneCreateOptions {
+	var opts client.ZoneCreateOptions
+	zoneType := plan.Type.ValueString()
+	if !takesPrimaryNameServers(zoneType) {
+		return opts
+	}
+	if !plan.PrimaryNameServerAddresses.IsNull() && !plan.PrimaryNameServerAddresses.IsUnknown() {
+		plan.PrimaryNameServerAddresses.ElementsAs(ctx, &opts.PrimaryNameServerAddresses, false)
+	}
+	if isSecondaryFamilyZoneType(zoneType) {
+		if !plan.ZoneTransferProtocol.IsNull() && !plan.ZoneTransferProtocol.IsUnknown() {
+			opts.ZoneTransferProtocol = plan.ZoneTransferProtocol.ValueString()
+		}
+		if !plan.PrimaryZoneTransferTsigKeyName.IsNull() && !plan.PrimaryZoneTransferTsigKeyName.IsUnknown() {
+			opts.TsigKeyName = plan.PrimaryZoneTransferTsigKeyName.ValueString()
+		}
+	}
+	return opts
+}
+
+// planPrimaryNameServers validates primary_name_server_addresses and
+// zone_transfer_protocol against the zone type and keeps their planned value
+// null on zone types that do not take them.
+//
+// Validation reads the configuration, not the plan: both attributes are
+// Optional+Computed, so the plan may carry a provider-chosen value that the
+// operator never wrote. An unknown type is skipped (it may be wired from
+// another resource) exactly like the dnssec check.
+func (r *ZoneResource) planPrimaryNameServers(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse, plan *ZoneResourceModel) {
+	if plan.Type.IsUnknown() || plan.Type.IsNull() {
+		return
+	}
+	zoneType := plan.Type.ValueString()
+
+	var cfgAddrs types.List
+	var cfgProto types.String
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("primary_name_server_addresses"), &cfgAddrs)...)
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("zone_transfer_protocol"), &cfgProto)...)
+
+	addrsSet := !cfgAddrs.IsNull()
+	protoSet := !cfgProto.IsNull() && (cfgProto.IsUnknown() || cfgProto.ValueString() != "")
+
+	if addrsSet && !takesPrimaryNameServers(zoneType) {
+		resp.Diagnostics.AddAttributeError(path.Root("primary_name_server_addresses"),
+			"Invalid zone type for primary_name_server_addresses",
+			fmt.Sprintf("\"primary_name_server_addresses\" is only valid for Secondary, SecondaryForwarder, SecondaryCatalog, and Stub zones. Got: %q.", zoneType))
+	}
+	if protoSet && !isSecondaryFamilyZoneType(zoneType) {
+		resp.Diagnostics.AddAttributeError(path.Root("zone_transfer_protocol"),
+			"Invalid zone type for zone_transfer_protocol",
+			fmt.Sprintf("\"zone_transfer_protocol\" is only valid for Secondary, SecondaryForwarder, and SecondaryCatalog zones. Got: %q.", zoneType))
+	}
+
+	// A zone that pulls its data needs a primary. This is a warning, not an
+	// error: the API documents the parameter as optional (the server then tries
+	// to discover the primary itself through normal DNS resolution), which can
+	// work for publicly resolvable zones, so an error would reject working
+	// configurations. For an internal zone the discovery fails ("did not
+	// receive SOA record in response from any of the primary name servers")
+	// and so does the create, hence the warning at creation.
+	if !addrsSet && req.State.Raw.IsNull() && takesPrimaryNameServers(zoneType) {
+		resp.Diagnostics.AddAttributeWarning(path.Root("primary_name_server_addresses"),
+			"No primary name servers set for a "+zoneType+" zone",
+			fmt.Sprintf("A %s zone loads its data from a primary. Without primary_name_server_addresses "+
+				"Technitium tries to discover the primary through normal DNS resolution, which fails for zones "+
+				"that are not resolvable from this server (such as an internal split-horizon zone), and the "+
+				"zone will not be created.", zoneType))
+	}
+
+	// Types that do not take these attributes must plan them as null rather
+	// than "known after apply", which UseStateForUnknown cannot do from a
+	// null state.
+	if !takesPrimaryNameServers(zoneType) && plan.PrimaryNameServerAddresses.IsUnknown() {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("primary_name_server_addresses"),
+			types.ListNull(types.StringType))...)
+	}
+	if !isSecondaryFamilyZoneType(zoneType) && plan.ZoneTransferProtocol.IsUnknown() {
+		resp.Diagnostics.Append(resp.Plan.SetAttribute(ctx, path.Root("zone_transfer_protocol"),
+			types.StringNull())...)
 	}
 }
