@@ -33,6 +33,13 @@ services:
       - "127.0.0.1:15353:53/tcp"
     env_file:
       - .env.test
+    networks:
+      testacc:
+        # Fixed address: the secondary-zone acceptance tests name this
+        # container to the primary's transfer ACL, and Technitium resolves
+        # primaryNameServerAddresses through DNS, not Docker's embedded
+        # resolver, so container names cannot be used there.
+        ipv4_address: 172.29.168.2
     volumes:
       # Bind-mount the WHOLE /etc/dns dir (not just /etc/dns/config) so the
       # non-root container can create subpaths like /etc/dns/blocklists at
@@ -51,3 +58,35 @@ services:
       # pollution, automatic cleanup on container stop. Capped at 128m so a
       # runaway log loop can't fill memory.
       - /var/log/technitium:size=128m
+
+  # A second, independent Technitium server that plays the PRIMARY in the
+  # secondary-zone acceptance tests (primary_name_server_addresses): the zone is
+  # created and populated here, and the `technitium` service above pulls it by
+  # AXFR through the provider. Reachable from `technitium` at 172.29.168.10:53
+  # and from the host (plain HTTP) at 127.0.0.1:5381 for test setup.
+  #
+  # The admin password below is a throwaway fixture for a container that only
+  # exists, and is only published on loopback, for the duration of a test run.
+  technitium-primary:
+    image: technitium/dns-server:latest@sha256:1045db38fd2f2e4d9578f9168b7eb4862575469ed0ffc79e03f36bdc772a93b5
+    container_name: technitium-test-primary
+    user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
+    cap_add:
+      - NET_BIND_SERVICE
+    ports:
+      - "127.0.0.1:5381:5380"
+    environment:
+      DNS_SERVER_ADMIN_PASSWORD: "acc-primary-fixture"
+    networks:
+      testacc:
+        ipv4_address: 172.29.168.10
+    volumes:
+      - ./.testdata/dns-primary-data:/etc/dns
+    tmpfs:
+      - /var/log/technitium:size=128m
+
+networks:
+  testacc:
+    ipam:
+      config:
+        - subnet: 172.29.168.0/24
