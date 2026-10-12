@@ -72,7 +72,7 @@ testacc-token:
 
 testacc-up: _testdata-preflight
 	@test -f .env.test || (echo "ERROR: .env.test not found. Copy .env.test.example to .env.test and fill in values." && exit 1)
-	mkdir -p ./.testdata/dns-data
+	mkdir -p ./.testdata/dns-data ./.testdata/dns-primary-data
 	docker compose -f docker-compose.test.yml up -d --wait
 	$(MAKE) testacc-token
 	$(MAKE) testacc
@@ -82,7 +82,7 @@ testacc-down:
 	# Same cleanup rationale as testacc-down-tls (issue #36): non-root
 	# container means host user owns the bind-mounted data dir, so plain
 	# rm works.
-	rm -rf ./.testdata/dns-data
+	rm -rf ./.testdata/dns-data ./.testdata/dns-primary-data
 
 # --- TLS-enabled acceptance test path -----------------------------------------
 #
@@ -119,7 +119,7 @@ testacc-tls:
 
 testacc-up-tls: _testdata-preflight
 	$(MAKE) testacc-tls-prep
-	mkdir -p ./.testdata/dns-data
+	mkdir -p ./.testdata/dns-data ./.testdata/dns-primary-data
 	docker compose -f docker-compose.test.yml -f docker-compose.test.tls.yml up -d --wait
 	@echo "Waiting for HTTPS admin endpoint to accept requests..."
 	@set +x; \
@@ -135,7 +135,7 @@ testacc-down-tls:
 	# host-owned and removable without sudo. ./testdata/tls is the generated
 	# TLS material. Both are wiped here for a clean next-run baseline.
 	docker compose -f docker-compose.test.yml -f docker-compose.test.tls.yml down -v
-	rm -rf ./.testdata/dns-data ./testdata/tls
+	rm -rf ./.testdata/dns-data ./.testdata/dns-primary-data ./testdata/tls
 
 # tfplugindocs infers --provider-name from the working directory name (minus
 # the terraform-provider- prefix). That inference fails in any directory named

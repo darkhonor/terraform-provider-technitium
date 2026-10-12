@@ -36,6 +36,11 @@ resource "technitium_zone" "secondary" {
   name = "example.com"
   type = "Secondary"
 
+  # The primary(ies) to transfer from. The first transfer happens while the zone
+  # is created, so the primary must be reachable and allow this server.
+  primary_name_server_addresses = ["10.0.10.12"]
+  zone_transfer_protocol        = "Tcp"
+
   primary_zone_transfer_tsig_key_name = technitium_tsig_key.transfer.key_name
 }
 ```
@@ -232,7 +237,19 @@ resource "technitium_zone" "going_insecure" {
 
 * `primary_zone_transfer_tsig_key_name` - (Optional, String) TSIG key name for authenticating zone transfers from the primary server. Only valid for `Secondary`, `SecondaryForwarder`, and `SecondaryCatalog` zones.
 
+* `primary_name_server_addresses` - (Optional, Computed, List of String) Primary name servers a `Secondary`, `SecondaryForwarder`, `SecondaryCatalog`, or `Stub` zone transfers from, in order of preference. Each entry is an IP address or domain name, optionally with a port (`10.0.0.1`, `10.0.0.1:5353`, `[2001:db8::1]:853`). At least one entry when set. Rejected at plan time on other zone types. See [Secondary and Stub zones](#secondary-and-stub-zones) below.
+
+* `zone_transfer_protocol` - (Optional, Computed, String) Protocol used to transfer the zone from its primary. Valid values: `Tcp`, `Tls`, `Quic`. Only valid for `Secondary`, `SecondaryForwarder`, and `SecondaryCatalog` zones (Technitium reports no transfer protocol for `Stub`); rejected at plan time on other types. When unset the server default (`Tcp`) is read back.
+
 * `dnssec` - (Optional, Block) DNSSEC signing configuration. Only valid for `Primary` zones. See [dnssec](#dnssec) below.
+
+### Secondary and Stub zones
+
+Technitium performs a Secondary zone's **first transfer while creating it**, so the primaries must be reachable and must permit this server (a `zone_transfer` ACL entry for it, plus `zone_transfer_tsig_key_names` and `primary_zone_transfer_tsig_key_name` when TSIG is used) at apply time. The provider therefore sends `primary_name_server_addresses`, `zone_transfer_protocol` and `primary_zone_transfer_tsig_key_name` on the create call itself.
+
+* Creating a `Secondary`, `SecondaryForwarder`, `SecondaryCatalog`, or `Stub` zone **without** `primary_name_server_addresses` is not an error, because Technitium documents the parameter as optional (it then tries to discover the primary itself), but it draws a plan-time warning: for an internal zone that cannot be resolved from this server the discovery fails and so does the create.
+* The server stores addresses in its own form (for example `10.0.0.1` becomes `10.0.0.1:853` under `Tls`, and `2001:db8::1` becomes `[2001:db8::1]`). The value you configured is kept in state when it means the same thing, so this causes no diff; a genuinely different value is reported as drift. Order is significant.
+* Both attributes are computed: omitting them leaves the server's values untouched, and `terraform import` reads them from the server. Technitium has no way to clear the primaries of a Secondary in place, so the list cannot be emptied.
 
 ### dnssec
 

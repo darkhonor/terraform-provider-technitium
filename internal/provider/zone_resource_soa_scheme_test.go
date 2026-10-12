@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"strings"
 	"sync"
 	"testing"
 
@@ -87,17 +88,18 @@ func (f *zoneSOAFake) resource(t *testing.T) *ZoneResource {
 
 func soaFakeModel(zoneType string, scheme types.Bool) *ZoneResourceModel {
 	return &ZoneResourceModel{
-		Name:                     types.StringValue(soaFakeZone),
-		Type:                     types.StringValue(zoneType),
-		SOASerialDateScheme:      scheme,
-		Notify:                   types.ListNull(types.StringType),
-		AllowTransfer:            types.ListNull(types.StringType),
-		ZoneTransferTsigKeyNames: types.ListNull(types.StringType),
-		QueryAccess:              types.StringNull(),
-		QueryAccessNetworkACL:    types.ListNull(types.StringType),
-		DynamicUpdate:            types.StringNull(),
-		DynamicUpdateNetworkACL:  types.ListNull(types.StringType),
-		SOASerial:                types.Int64Unknown(),
+		Name:                       types.StringValue(soaFakeZone),
+		Type:                       types.StringValue(zoneType),
+		SOASerialDateScheme:        scheme,
+		Notify:                     types.ListNull(types.StringType),
+		AllowTransfer:              types.ListNull(types.StringType),
+		ZoneTransferTsigKeyNames:   types.ListNull(types.StringType),
+		QueryAccess:                types.StringNull(),
+		QueryAccessNetworkACL:      types.ListNull(types.StringType),
+		DynamicUpdate:              types.StringNull(),
+		DynamicUpdateNetworkACL:    types.ListNull(types.StringType),
+		PrimaryNameServerAddresses: types.ListNull(types.StringType),
+		SOASerial:                  types.Int64Unknown(),
 	}
 }
 
@@ -394,7 +396,15 @@ func TestZoneModifyPlan_WarnsOnUnmanagedExplicitFalse(t *testing.T) {
 		if resp.Diagnostics.HasError() {
 			t.Fatalf("%s/%v: %v", c.zoneType, c.scheme, resp.Diagnostics)
 		}
-		if got := resp.Diagnostics.WarningsCount() > 0; got != c.warn {
+		// Only the soa_serial_date_scheme warning is under test here; a
+		// Secondary/Stub create without primaries legitimately also warns.
+		var got bool
+		for _, d := range resp.Diagnostics.Warnings() {
+			if strings.Contains(d.Summary(), "soa_serial_date_scheme") {
+				got = true
+			}
+		}
+		if got != c.warn {
 			t.Errorf("%s/%v: warning = %t, want %t", c.zoneType, c.scheme, got, c.warn)
 		}
 	}
