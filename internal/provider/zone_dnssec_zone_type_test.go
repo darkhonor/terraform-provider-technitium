@@ -35,6 +35,7 @@ func modifyPlanForZone(t *testing.T, zoneType types.String, dnssec *DNSSECModel)
 		QueryAccessNetworkACL:         types.ListNull(types.StringType),
 		DynamicUpdateNetworkACL:       types.ListNull(types.StringType),
 		DynamicUpdateSecurityPolicies: types.SetNull(updateSecurityPolicyType),
+		PrimaryNameServerAddresses:    types.ListNull(types.StringType),
 	}
 
 	plan := tfsdk.Plan{Schema: schemaResp.Schema}

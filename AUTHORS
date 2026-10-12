@@ -61,3 +61,8 @@ Listed in order of first contribution.
 
 * Max Pfeiffer (@max-pfeiffer) - TSIG security policies for RFC 2136 dynamic
   updates on `technitium_zone` (`dynamic_update_security_policies`).
+
+* Tristan Milnthorp (@tmilnthorp) - `primary_name_server_addresses` and
+  `zone_transfer_protocol` on `technitium_zone`, so Secondary and Stub zones can
+  name the primary they transfer from, with an acceptance test that proves the
+  AXFR between two Technitium containers. (#168)
