@@ -87,17 +87,18 @@ func (f *zoneSOAFake) resource(t *testing.T) *ZoneResource {
 
 func soaFakeModel(zoneType string, scheme types.Bool) *ZoneResourceModel {
 	return &ZoneResourceModel{
-		Name:                     types.StringValue(soaFakeZone),
-		Type:                     types.StringValue(zoneType),
-		SOASerialDateScheme:      scheme,
-		Notify:                   types.ListNull(types.StringType),
-		AllowTransfer:            types.ListNull(types.StringType),
-		ZoneTransferTsigKeyNames: types.ListNull(types.StringType),
-		QueryAccess:              types.StringNull(),
-		QueryAccessNetworkACL:    types.ListNull(types.StringType),
-		DynamicUpdate:            types.StringNull(),
-		DynamicUpdateNetworkACL:  types.ListNull(types.StringType),
-		SOASerial:                types.Int64Unknown(),
+		Name:                          types.StringValue(soaFakeZone),
+		Type:                          types.StringValue(zoneType),
+		SOASerialDateScheme:           scheme,
+		Notify:                        types.ListNull(types.StringType),
+		AllowTransfer:                 types.ListNull(types.StringType),
+		ZoneTransferTsigKeyNames:      types.ListNull(types.StringType),
+		QueryAccess:                   types.StringNull(),
+		QueryAccessNetworkACL:         types.ListNull(types.StringType),
+		DynamicUpdate:                 types.StringNull(),
+		DynamicUpdateNetworkACL:       types.ListNull(types.StringType),
+		DynamicUpdateSecurityPolicies: types.SetNull(updateSecurityPolicyType),
+		SOASerial:                     types.Int64Unknown(),
 	}
 }
 
