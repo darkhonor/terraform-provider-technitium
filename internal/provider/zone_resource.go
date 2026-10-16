@@ -7,12 +7,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/client"
+	"github.com/hashicorp/terraform-plugin-framework-validators/setvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 
 	"github.com/darkhonor/terraform-provider-technitium/internal/provider/validators"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -59,6 +63,7 @@ type ZoneResourceModel struct {
 	QueryAccessNetworkACL          types.List   `tfsdk:"query_access_network_acl"`
 	DynamicUpdate                  types.String `tfsdk:"dynamic_update"`
 	DynamicUpdateNetworkACL        types.List   `tfsdk:"dynamic_update_network_acl"`
+	DynamicUpdateSecurityPolicies  types.Set    `tfsdk:"dynamic_update_security_policies"`
 	Disabled                       types.Bool   `tfsdk:"disabled"`
 	// Computed
 	SOASerial    types.Int64  `tfsdk:"soa_serial"`
@@ -78,6 +83,30 @@ type DNSSECModel struct {
 	// and this attribute must always equal declared config (issue #96).
 	ChangeAcknowledgment types.String `tfsdk:"change_acknowledgment"`
 }
+
+// UpdateSecurityPolicyModel maps an element of dynamic_update_security_policies.
+type UpdateSecurityPolicyModel struct {
+	TsigKeyName  types.String `tfsdk:"tsig_key_name"`
+	Domain       types.String `tfsdk:"domain"`
+	AllowedTypes types.Set    `tfsdk:"allowed_types"`
+}
+
+var updateSecurityPolicyAttrTypes = map[string]attr.Type{
+	"tsig_key_name": types.StringType,
+	"domain":        types.StringType,
+	"allowed_types": types.SetType{ElemType: types.StringType},
+}
+
+var updateSecurityPolicyType = types.ObjectType{AttrTypes: updateSecurityPolicyAttrTypes}
+
+// Technitium stores TSIG key names and domains in lowercase without a trailing
+// dot and record types in uppercase. The schema accepts only these canonical
+// forms, so the values read back always match the configuration.
+var (
+	updatePolicyKeyNamePattern = regexp.MustCompile(`^[a-z0-9_-]+(\.[a-z0-9_-]+)*$`)
+	updatePolicyDomainPattern  = regexp.MustCompile(`^(\*\.)?[a-z0-9_-]+(\.[a-z0-9_-]+)*$`)
+	updatePolicyTypePattern    = regexp.MustCompile(`^[A-Z0-9]+$`)
+)
 
 func (r *ZoneResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_zone"
@@ -158,6 +187,46 @@ func (r *ZoneResource) Schema(_ context.Context, _ resource.SchemaRequest, resp 
 				Description: "Network ACL used when dynamic_update uses a specified network ACL.",
 				Optional:    true,
 				ElementType: types.StringType,
+			},
+			"dynamic_update_security_policies": schema.SetNestedAttribute{
+				Description: "Security policies for dynamic updates (RFC 2136). When set, dynamic updates must be " +
+					"signed with a TSIG key and may only change the record types a policy allows that key for the " +
+					"domain. An empty set removes all policies and stops TSIG authentication of dynamic updates. " +
+					"Valid for Primary and Forwarder zones. When unset, the server value is left unmanaged.",
+				Optional: true,
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"tsig_key_name": schema.StringAttribute{
+							Description: "Name of the TSIG key the policy applies to, in lowercase. Technitium " +
+								"stores TSIG key names in lowercase; use lower() for a name with uppercase letters.",
+							Required: true,
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(updatePolicyKeyNamePattern,
+									"must be a lowercase TSIG key name without a trailing dot, as Technitium stores "+
+										"key names in lowercase (use lower() for a name with uppercase letters)"),
+							},
+						},
+						"domain": schema.StringAttribute{
+							Description: "Domain name within the zone, in lowercase and without a trailing dot. " +
+								"A domain starting with \"*.\" covers all sub domain names, but not the domain itself.",
+							Required: true,
+							Validators: []validator.String{
+								stringvalidator.RegexMatches(updatePolicyDomainPattern,
+									"must be a lowercase domain name without a trailing dot, optionally starting with \"*.\""),
+							},
+						},
+						"allowed_types": schema.SetAttribute{
+							Description: "Record types the key may update, in uppercase, e.g. TXT. ANY allows all types.",
+							Required:    true,
+							ElementType: types.StringType,
+							Validators: []validator.Set{
+								setvalidator.SizeAtLeast(1),
+								setvalidator.ValueStringsAre(stringvalidator.RegexMatches(updatePolicyTypePattern,
+									"must be an uppercase record type, e.g. TXT")),
+							},
+						},
+					},
+				},
 			},
 			"disabled": schema.BoolAttribute{
 				Description: "Disable the zone (it stops serving queries but keeps its data).",
@@ -321,6 +390,8 @@ func (r *ZoneResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRe
 				fmt.Sprintf("\"zone_transfer_tsig_key_names\" is only valid for Primary, Secondary, Forwarder, and Catalog zones. Got: %q.", zoneType))
 		}
 	}
+
+	validateUpdateSecurityPolicies(ctx, &plan, req.State.Raw.IsNull(), &resp.Diagnostics)
 
 	// Zone type validation for dnssec (issue #100).
 	//
@@ -717,6 +788,15 @@ func (r *ZoneResource) setZoneOptions(ctx context.Context, plan *ZoneResourceMod
 		opts["disabled"] = fmt.Sprintf("%t", plan.Disabled.ValueBool())
 	}
 
+	// Handle dynamic update security policies
+	if !plan.DynamicUpdateSecurityPolicies.IsNull() && !plan.DynamicUpdateSecurityPolicies.IsUnknown() {
+		policies, diags := updateSecurityPoliciesFromSet(ctx, plan.DynamicUpdateSecurityPolicies)
+		if diags.HasError() {
+			return fmt.Errorf("converting dynamic_update_security_policies")
+		}
+		opts["updateSecurityPolicies"] = client.FormatUpdateSecurityPolicies(policies)
+	}
+
 	if len(opts) > 0 {
 		return r.client.ZoneOptionsSet(ctx, plan.Name.ValueString(), opts)
 	}
@@ -788,6 +868,13 @@ func (r *ZoneResource) readZoneState(ctx context.Context, model *ZoneResourceMod
 		model.DynamicUpdate = types.StringValue(zone.Update)
 	}
 	readStringList(ctx, &model.DynamicUpdateNetworkACL, zone.UpdateNetworkACL)
+	if !model.DynamicUpdateSecurityPolicies.IsNull() {
+		policies, diags := updateSecurityPoliciesToSet(ctx, zone.UpdateSecurityPolicies)
+		if diags.HasError() {
+			return fmt.Errorf("converting dynamic_update_security_policies")
+		}
+		model.DynamicUpdateSecurityPolicies = policies
+	}
 	model.Disabled = types.BoolValue(zone.Disabled)
 
 	// Read primary_zone_transfer_tsig_key_name
@@ -907,6 +994,131 @@ func (r *ZoneResource) validateTsigKeyReferences(ctx context.Context, plan *Zone
 			r.validateTsigKeyReference(ctx, keyName, diagnostics)
 		}
 	}
+
+	// Validate dynamic_update_security_policies. The server accepts policies
+	// for keys that do not exist, so a typo would silently reject all updates.
+	if !plan.DynamicUpdateSecurityPolicies.IsNull() && !plan.DynamicUpdateSecurityPolicies.IsUnknown() {
+		policies, diags := updateSecurityPoliciesFromSet(ctx, plan.DynamicUpdateSecurityPolicies)
+		diagnostics.Append(diags...)
+		seen := map[string]bool{}
+		for _, p := range policies {
+			if !seen[p.TsigKeyName] {
+				seen[p.TsigKeyName] = true
+				r.validateTsigKeyReference(ctx, p.TsigKeyName, diagnostics)
+			}
+		}
+	}
+}
+
+// validateUpdateSecurityPolicies checks dynamic_update_security_policies at
+// plan time. Technitium accepts policies on Primary and Forwarder zones only,
+// and merges policies with the same key and domain into one, which would show
+// up as an inconsistent result after apply. Policies have no effect while
+// dynamic updates are denied, which is the server default for a new zone.
+func validateUpdateSecurityPolicies(ctx context.Context, plan *ZoneResourceModel, create bool, diagnostics *diag.Diagnostics) {
+	if plan.DynamicUpdateSecurityPolicies.IsNull() || plan.DynamicUpdateSecurityPolicies.IsUnknown() {
+		return
+	}
+	attrPath := path.Root("dynamic_update_security_policies")
+
+	// An unset dynamic_update leaves the server value unmanaged, which is only
+	// known to be Deny when the zone is created.
+	denied := plan.DynamicUpdate.ValueString() == "Deny" || (plan.DynamicUpdate.IsNull() && create)
+	if denied && len(plan.DynamicUpdateSecurityPolicies.Elements()) > 0 {
+		diagnostics.AddAttributeWarning(attrPath,
+			"dynamic_update_security_policies have no effect",
+			"Dynamic updates are denied for this zone, so the security policies never apply. Set dynamic_update "+
+				"to Allow, AllowOnlyZoneNameServers, UseSpecifiedNetworkACL, or "+
+				"AllowZoneNameServersAndUseSpecifiedNetworkACL to accept updates signed with the TSIG keys.")
+	}
+
+	if !plan.Type.IsUnknown() && plan.Type.ValueString() != "Primary" && plan.Type.ValueString() != "Forwarder" {
+		diagnostics.AddAttributeError(attrPath,
+			"Invalid zone type for dynamic_update_security_policies",
+			fmt.Sprintf("\"dynamic_update_security_policies\" is only valid for Primary and Forwarder zones. Got: %q.",
+				plan.Type.ValueString()))
+	}
+
+	var policies []UpdateSecurityPolicyModel
+	diagnostics.Append(plan.DynamicUpdateSecurityPolicies.ElementsAs(ctx, &policies, false)...)
+	seen := map[[2]string]bool{}
+	for _, p := range policies {
+		if p.TsigKeyName.IsUnknown() || p.Domain.IsUnknown() {
+			continue
+		}
+		k := [2]string{p.TsigKeyName.ValueString(), p.Domain.ValueString()}
+		if seen[k] {
+			diagnostics.AddAttributeError(attrPath,
+				"Duplicate dynamic update security policy",
+				fmt.Sprintf("More than one policy allows TSIG key %q to update %q. Technitium merges them into one "+
+					"policy, so list all record types in the allowed_types of a single policy.", k[0], k[1]))
+		}
+		seen[k] = true
+	}
+}
+
+// updateSecurityPoliciesFromSet converts dynamic_update_security_policies to
+// API policies, sorted by key name and domain for a stable request.
+func updateSecurityPoliciesFromSet(ctx context.Context, set types.Set) ([]client.UpdateSecurityPolicy, diag.Diagnostics) {
+	var models []UpdateSecurityPolicyModel
+	diags := set.ElementsAs(ctx, &models, false)
+	if diags.HasError() {
+		return nil, diags
+	}
+
+	policies := make([]client.UpdateSecurityPolicy, 0, len(models))
+	for _, m := range models {
+		var allowedTypes []string
+		diags.Append(m.AllowedTypes.ElementsAs(ctx, &allowedTypes, false)...)
+		sort.Strings(allowedTypes)
+		policies = append(policies, client.UpdateSecurityPolicy{
+			TsigKeyName:  m.TsigKeyName.ValueString(),
+			Domain:       m.Domain.ValueString(),
+			AllowedTypes: allowedTypes,
+		})
+	}
+	sort.Slice(policies, func(i, j int) bool {
+		if policies[i].TsigKeyName != policies[j].TsigKeyName {
+			return policies[i].TsigKeyName < policies[j].TsigKeyName
+		}
+		return policies[i].Domain < policies[j].Domain
+	})
+	return policies, diags
+}
+
+// updateSecurityPoliciesToSet converts the policies reported by the server to
+// dynamic_update_security_policies. The server keeps duplicate record types,
+// which a set cannot hold, so they are removed.
+func updateSecurityPoliciesToSet(ctx context.Context, policies []client.UpdateSecurityPolicy) (types.Set, diag.Diagnostics) {
+	var diags diag.Diagnostics
+
+	elems := make([]attr.Value, 0, len(policies))
+	for _, p := range policies {
+		seen := map[string]bool{}
+		var allowedTypes []string
+		for _, t := range p.AllowedTypes {
+			if !seen[t] {
+				seen[t] = true
+				allowedTypes = append(allowedTypes, t)
+			}
+		}
+		typesSet, d := types.SetValueFrom(ctx, types.StringType, allowedTypes)
+		diags.Append(d...)
+		obj, d := types.ObjectValue(updateSecurityPolicyAttrTypes, map[string]attr.Value{
+			"tsig_key_name": types.StringValue(p.TsigKeyName),
+			"domain":        types.StringValue(p.Domain),
+			"allowed_types": typesSet,
+		})
+		diags.Append(d...)
+		elems = append(elems, obj)
+	}
+	if diags.HasError() {
+		return types.SetNull(updateSecurityPolicyType), diags
+	}
+
+	set, d := types.SetValue(updateSecurityPolicyType, elems)
+	diags.Append(d...)
+	return set, diags
 }
 
 // mapIANAAlgorithmToAPI converts IANA algorithm names (e.g., ECDSAP256SHA256)

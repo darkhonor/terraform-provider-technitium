@@ -23,6 +23,10 @@ Manages a DNS zone on the Technitium DNS Server. Supports Primary, Secondary, St
 
 {{codefile "hcl" "examples/resources/technitium_zone/secondary-with-tsig.tf"}}
 
+### Dynamic Updates with TSIG Authentication
+
+{{codefile "hcl" "examples/resources/technitium_zone/dynamic-update-tsig.tf"}}
+
 ### DNSSEC-Enabled Zone
 
 {{codefile "hcl" "examples/resources/technitium_zone/dnssec-enabled.tf"}}
@@ -111,7 +115,27 @@ The older workaround — set `enabled = false`, apply, then re-enable with new p
 
 * `primary_zone_transfer_tsig_key_name` - (Optional, String) TSIG key name for authenticating zone transfers from the primary server. Only valid for `Secondary`, `SecondaryForwarder`, and `SecondaryCatalog` zones.
 
+* `dynamic_update` - (Optional, String) Dynamic updates (RFC 2136) policy. Valid values: `Deny`, `Allow`, `AllowOnlyZoneNameServers`, `UseSpecifiedNetworkACL`, `AllowZoneNameServersAndUseSpecifiedNetworkACL`. When unset, the server value is left unmanaged.
+
+* `dynamic_update_network_acl` - (Optional, List of String) Network ACL used when `dynamic_update` uses a specified network ACL.
+
+* `dynamic_update_security_policies` - (Optional, Set of Object) TSIG security policies for dynamic updates. Only valid for `Primary` and `Forwarder` zones. See [dynamic_update_security_policies](#dynamic_update_security_policies) below.
+
 * `dnssec` - (Optional, Block) DNSSEC signing configuration. Only valid for `Primary` zones. See [dnssec](#dnssec) below.
+
+### dynamic_update_security_policies
+
+When policies are set, Technitium accepts only dynamic updates signed with a TSIG key, and a key may only update the record types a policy allows it for the domain. `dynamic_update` still decides which clients may send updates at all; while it is `Deny`, the server default for a new zone, the policies have no effect and the plan shows a warning. An empty set (`[]`) removes all policies and stops TSIG authentication of dynamic updates. When the attribute is unset, the server value is left unmanaged, and an imported zone leaves it unmanaged until it is configured.
+
+Technitium stores key names and domains in lowercase without a trailing dot and record types in uppercase, so only these forms are accepted. Use `lower()` for a key name with uppercase letters. It merges policies with the same key and domain, so each key and domain pair may appear once.
+
+Each policy supports the following arguments:
+
+* `tsig_key_name` - (Required, String) Name of the TSIG key the policy applies to. The key must exist on the server.
+
+* `domain` - (Required, String) Domain name within the zone. A domain starting with `*.` covers all sub domain names, but not the domain itself: `*.example.com` does not allow updates to `example.com`. Add a second policy for the domain itself if needed.
+
+* `allowed_types` - (Required, Set of String) Record types the key may update, for example `TXT`. `ANY` allows all types.
 
 ### dnssec
 
