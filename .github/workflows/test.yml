@@ -69,8 +69,8 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
       - name: Install gosec
-        # securego/gosec#1774: untagged until a release supports Go 1.27.2
-        run: go install github.com/securego/gosec/v2/cmd/gosec@782eeb188eebedaf2335f3adac7052d106670324
+        # Temporary untagged pin (securego/gosec#1774); replace with a tagged release per #178
+        run: go install github.com/securego/gosec/v2/cmd/gosec@7b1b5cebe007d62fb58eacb90fc571112939ec30
       - name: Run gosec
         run: gosec -exclude=G304 ./...
 
