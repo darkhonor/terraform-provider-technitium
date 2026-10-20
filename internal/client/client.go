@@ -116,7 +116,7 @@ func NewClient(cfg ClientConfig) (*Client, error) {
 		}
 
 		if cfg.SkipTLSVerify {
-			tlsConfig.InsecureSkipVerify = true //nolint:gosec // User explicitly opted in
+			tlsConfig.InsecureSkipVerify = true // #nosec G402 -- skip_tls_verify opt-in
 		}
 
 		transport.TLSClientConfig = tlsConfig
