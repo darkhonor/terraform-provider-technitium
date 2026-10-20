@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+
+- Go 1.27.2 and `golang.org/x/net` v0.60.0 for standard-library and x/net vulnerabilities reported by govulncheck. ([#177])
+
 ## [1.3.0] - 2026-10-04
 
 Tested against Technitium DNS Server 15.5.1. The **Breaking** items below can stop an existing
@@ -363,6 +367,7 @@ the new findings from blocking errors to plan-time warnings while you
 work through your zones. `"silent"` suppresses them entirely. Both
 settings preserve the validator coverage for future runs.
 
+[#177]: https://github.com/darkhonor/terraform-provider-technitium/issues/177
 [#140]: https://github.com/darkhonor/terraform-provider-technitium/issues/140
 [#121]: https://github.com/darkhonor/terraform-provider-technitium/issues/121
 [#88]: https://github.com/darkhonor/terraform-provider-technitium/issues/88

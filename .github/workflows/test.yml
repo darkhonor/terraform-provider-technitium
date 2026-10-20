@@ -41,7 +41,7 @@ jobs:
         with:
           go-version-file: go.mod
       - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.13.2
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
       - name: Run golangci-lint
         run: golangci-lint run ./...
 
@@ -69,7 +69,8 @@ jobs:
       - name: Run govulncheck
         run: govulncheck ./...
       - name: Install gosec
-        run: go install github.com/securego/gosec/v2/cmd/gosec@v2.29.0
+        # Temporary untagged pin (securego/gosec#1774); replace with a tagged release per #178
+        run: go install github.com/securego/gosec/v2/cmd/gosec@7b1b5cebe007d62fb58eacb90fc571112939ec30
       - name: Run gosec
         run: gosec -exclude=G304 ./...
 
