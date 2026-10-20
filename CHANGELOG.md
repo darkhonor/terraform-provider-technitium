@@ -11,6 +11,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Go 1.27.2 and `golang.org/x/net` v0.60.0 for standard-library and x/net vulnerabilities reported by govulncheck. ([#177])
 
+### Added
+
+- `technitium_zone`: `dynamic_update_security_policies`, which restricts RFC 2136 dynamic updates
+  to TSIG keys, domains, and record types. Contributed by
+  [@max-pfeiffer](https://github.com/max-pfeiffer).
+
 ## [1.3.0] - 2026-10-04
 
 Tested against Technitium DNS Server 15.5.1. The **Breaking** items below can stop an existing

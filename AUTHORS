@@ -58,3 +58,6 @@ Listed in order of first contribution.
   `reservedLeases` parameter is now omitted when the attribute is unset), and
   every plan of a `for_each`/`count` scope failing on unknown values in
   ValidateConfig; regression tests for both.
+
+* Max Pfeiffer (@max-pfeiffer) - TSIG security policies for RFC 2136 dynamic
+  updates on `technitium_zone` (`dynamic_update_security_policies`).
