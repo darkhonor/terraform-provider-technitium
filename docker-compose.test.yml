@@ -68,7 +68,7 @@ services:
   # The admin password below is a throwaway fixture for a container that only
   # exists, and is only published on loopback, for the duration of a test run.
   technitium-primary:
-    image: technitium/dns-server:latest@sha256:1045db38fd2f2e4d9578f9168b7eb4862575469ed0ffc79e03f36bdc772a93b5
+    image: technitium/dns-server:latest@sha256:eb48ac5c135f4ab936b536f74f853d53e15ab39ef37fdbc9598a089b90d9f245
     container_name: technitium-test-primary
     user: "${HOST_UID:-1000}:${HOST_GID:-1000}"
     cap_add:
