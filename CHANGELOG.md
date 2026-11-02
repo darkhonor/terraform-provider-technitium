@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Security
 
 - Go 1.27.2 and `golang.org/x/net` v0.60.0 for standard-library and x/net vulnerabilities reported by govulncheck. ([#177])
+- Go 1.27.3 for GO-2026-6809 (`crypto/x509`). ([#182])
 
 ## [1.3.0] - 2026-10-04
 
@@ -368,6 +369,7 @@ work through your zones. `"silent"` suppresses them entirely. Both
 settings preserve the validator coverage for future runs.
 
 [#177]: https://github.com/darkhonor/terraform-provider-technitium/issues/177
+[#182]: https://github.com/darkhonor/terraform-provider-technitium/issues/182
 [#140]: https://github.com/darkhonor/terraform-provider-technitium/issues/140
 [#121]: https://github.com/darkhonor/terraform-provider-technitium/issues/121
 [#88]: https://github.com/darkhonor/terraform-provider-technitium/issues/88
