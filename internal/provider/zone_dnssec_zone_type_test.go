@@ -29,11 +29,12 @@ func modifyPlanForZone(t *testing.T, zoneType types.String, dnssec *DNSSECModel)
 		DNSSEC: dnssec,
 		// Collection attributes need an explicit element type; a zero-value
 		// types.List carries no element type and fails plan.Set.
-		Notify:                   types.ListNull(types.StringType),
-		AllowTransfer:            types.ListNull(types.StringType),
-		ZoneTransferTsigKeyNames: types.ListNull(types.StringType),
-		QueryAccessNetworkACL:    types.ListNull(types.StringType),
-		DynamicUpdateNetworkACL:  types.ListNull(types.StringType),
+		Notify:                        types.ListNull(types.StringType),
+		AllowTransfer:                 types.ListNull(types.StringType),
+		ZoneTransferTsigKeyNames:      types.ListNull(types.StringType),
+		QueryAccessNetworkACL:         types.ListNull(types.StringType),
+		DynamicUpdateNetworkACL:       types.ListNull(types.StringType),
+		DynamicUpdateSecurityPolicies: types.SetNull(updateSecurityPolicyType),
 	}
 
 	plan := tfsdk.Plan{Schema: schemaResp.Schema}

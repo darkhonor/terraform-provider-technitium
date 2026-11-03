@@ -32,6 +32,33 @@ type Zone struct {
 	NotifyNameServers              []string `json:"notifyNameServers"`
 	Update                         string   `json:"update"`
 	UpdateNetworkACL               []string `json:"updateNetworkACL"`
+
+	UpdateSecurityPolicies []UpdateSecurityPolicy `json:"updateSecurityPolicies"`
+}
+
+// UpdateSecurityPolicy allows a TSIG key to update the given record types of
+// a domain name with RFC 2136 dynamic updates. A domain starting with "*."
+// covers all sub domain names.
+type UpdateSecurityPolicy struct {
+	TsigKeyName  string   `json:"tsigKeyName"`
+	Domain       string   `json:"domain"`
+	AllowedTypes []string `json:"allowedTypes"`
+}
+
+// FormatUpdateSecurityPolicies encodes policies as the updateSecurityPolicies
+// parameter of /api/zones/options/set: a pipe separated table with the
+// columns key name, domain and comma separated record types. No policies
+// encode as "false", which clears the policies and stops TSIG authentication
+// of dynamic updates.
+func FormatUpdateSecurityPolicies(policies []UpdateSecurityPolicy) string {
+	if len(policies) == 0 {
+		return "false"
+	}
+	cells := make([]string, 0, len(policies)*3)
+	for _, p := range policies {
+		cells = append(cells, p.TsigKeyName, p.Domain, strings.Join(p.AllowedTypes, ","))
+	}
+	return strings.Join(cells, "|")
 }
 
 // ZoneListItem is a zone entry from /api/zones/list.
