@@ -17,6 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `technitium_zone`: `dynamic_update_security_policies`, which restricts RFC 2136 dynamic updates
   to TSIG keys, domains, and record types. Contributed by
   [@max-pfeiffer](https://github.com/max-pfeiffer).
+- `technitium_zone`: `primary_name_server_addresses` and `zone_transfer_protocol` (`Tcp`, `Tls`, `Quic`),
+  so Secondary, SecondaryForwarder, SecondaryCatalog and Stub zones can name the primary they transfer from
+  (`zone_transfer_protocol` is Secondary-family only). They are sent on `zones/create`, where the first
+  transfer happens, together with `primary_zone_transfer_tsig_key_name`, and on `zones/options/set` for
+  updates. Both are rejected at plan time on other zone types, and creating a Secondary or Stub zone
+  without primaries draws a plan-time warning. The server's address normalisation (default port appended
+  for `Tls`/`Quic`, IPv6 bracketed) does not cause a diff. The `technitium_zone` data source exposes both.
+  ([#168])
+- Acceptance tests that prove an AXFR between two Technitium containers; the test compose file gains a
+  second "primary" container on a fixed network. ([#168])
 
 ## [1.3.0] - 2026-10-04
 
@@ -407,6 +417,7 @@ settings preserve the validator coverage for future runs.
 [#150]: https://github.com/darkhonor/terraform-provider-technitium/issues/150
 [#152]: https://github.com/darkhonor/terraform-provider-technitium/issues/152
 [#153]: https://github.com/darkhonor/terraform-provider-technitium/issues/153
+[#168]: https://github.com/darkhonor/terraform-provider-technitium/issues/168
 [#23]: https://github.com/darkhonor/terraform-provider-technitium/issues/23
 [#29]: https://github.com/darkhonor/terraform-provider-technitium/issues/29
 [#30]: https://github.com/darkhonor/terraform-provider-technitium/issues/30

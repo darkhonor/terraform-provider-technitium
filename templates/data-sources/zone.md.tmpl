@@ -38,3 +38,7 @@ Reads a DNS zone from the Technitium DNS Server. Use this data source to referen
 * `notify` - Zone notify policy.
 
 * `notify_name_servers` - List of name server IP addresses that receive notify messages.
+
+* `primary_name_server_addresses` - List of primary name server addresses of a `Secondary`, `SecondaryForwarder`, `SecondaryCatalog`, or `Stub` zone, as normalised by the server (for example `10.0.0.1:853` under `Tls`). Null for other zone types.
+
+* `zone_transfer_protocol` - Protocol (`Tcp`, `Tls`, `Quic`) used to transfer the zone from its primary. Null for zone types that do not transfer.
