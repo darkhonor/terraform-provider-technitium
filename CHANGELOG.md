@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Go 1.27.2 and `golang.org/x/net` v0.60.0 for standard-library and x/net vulnerabilities reported by govulncheck. ([#177])
 - Go 1.27.3 for GO-2026-6809 (`crypto/x509`). ([#182])
+- Go 1.27.4 for GO-2026-6859 (`net/http`).
 
 ### Added
 
