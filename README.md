@@ -252,7 +252,7 @@ the [DISA STIG Library](https://www.cyber.mil/stigs).
 | Requirement | Version |
 |---|---|
 | [Terraform](https://www.terraform.io/downloads.html) | >= 1.0 |
-| [Go](https://go.dev/dl/) (for building) | >= 1.27.1 |
+| [Go](https://go.dev/dl/) (for building) | >= 1.27.4 |
 | [Technitium DNS Server](https://technitium.com/dns/) | >= 15.0 (15.5.1 or later recommended); older servers need `legacy_token_auth = true` |
 
 The acceptance suite runs against Technitium **15.5.1**. Servers older than 15.0 are not
